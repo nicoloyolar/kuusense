@@ -1,0 +1,23 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /children/{childId}/sessions/{sessionId}/{file} {
+      function session() {
+        return firestore.get(/databases/(default)/documents/children/$(childId)/sessions/$(sessionId)).data;
+      }
+      function isStaff() {
+        return firestore.exists(/databases/(default)/documents/staff/$(request.auth.uid));
+      }
+
+      // Only the tutor whose phone recorded the session uploads its files.
+      allow create, update: if request.auth != null
+        && session().createdByUid == request.auth.uid
+        && file.matches('(raw|sync|events)\\.csv')
+        && request.resource.size < 500 * 1024 * 1024;
+
+      // Raw physiological data is for the research team only.
+      allow read: if request.auth != null && isStaff();
+    }
+  }
+}

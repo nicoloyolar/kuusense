@@ -1,0 +1,12 @@
+name: emotibit
+description: Pure-Dart host implementation of the EmotiBit WiFi protocol, plus a device simulator.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.0

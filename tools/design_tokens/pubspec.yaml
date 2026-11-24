@@ -1,0 +1,11 @@
+name: design_tokens
+description: Generates Dart and CSS from shared/design/tokens.json.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dev_dependencies:
+  lints: ^6.0.0

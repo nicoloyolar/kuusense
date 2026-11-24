@@ -1,0 +1,15 @@
+name: kuusense_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+workspace:
+  - packages/emotibit
+  - packages/kuusense_models
+  - packages/kuusense_firebase
+  - shared/kuusense_ui
+  - apps/mobile
+  - apps/web
+  - tools/emotibit_cli
+  - tools/design_tokens

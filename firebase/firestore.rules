@@ -1,0 +1,194 @@
+rules_version = '2';
+
+// Data model: packages/kuusense_models/lib/src/models.dart
+//
+// Who is who:
+//  - Tutor: email/password account with a tutors/{uid} doc. Sees only the
+//    children (NNA) whose tutorUids contain them.
+//  - Staff (researcher / admin): staff/{uid} doc created by admin tooling.
+//    Reads the pseudonymous part of every child and all sessions; never the
+//    private profile, and never writes child data.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function hasAccount() {
+      return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+    function docPath(collection, id) {
+      return /databases/$(database)/documents/$(collection)/$(id);
+    }
+    function isStaff() { return signedIn() && exists(docPath('staff', request.auth.uid)); }
+    function isTutor() { return hasAccount() && exists(docPath('tutors', request.auth.uid)); }
+    function isLinked(childId) {
+      return signedIn() && request.auth.uid in get(docPath('children', childId)).data.tutorUids;
+    }
+    function nowMs() { return request.time.toMillis(); }
+    // Same alphabet as the app: no 0/O, 1/I.
+    function codeChars() { return '[A-HJ-NP-Z2-9]'; }
+
+    // ---------------------------------------------------------------- tutors
+    match /tutors/{tutorId} {
+      function validTutor(d) {
+        return d.keys().hasOnly(['displayName', 'type', 'createdAtMs'])
+          && d.keys().hasAll(['displayName', 'type', 'createdAtMs'])
+          && d.displayName is string && d.displayName.size() >= 1 && d.displayName.size() <= 60
+          && d.type in ['family', 'teacher', 'therapist']
+          && d.createdAtMs is int;
+      }
+      function isSelf() { return hasAccount() && request.auth.uid == tutorId; }
+
+      allow read: if isSelf() || isStaff();
+      allow create: if isSelf() && validTutor(request.resource.data);
+      allow update: if isSelf() && validTutor(request.resource.data)
+        && request.resource.data.createdAtMs == resource.data.createdAtMs;
+      // Account deletion goes through admin tooling (data retention policy).
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------- staff
+    // Managed only with admin tooling (Admin SDK bypasses these rules).
+    match /staff/{staffId} {
+      allow read: if signedIn() && request.auth.uid == staffId;
+      allow write: if false;
+    }
+
+    // ---------------------------------------------------------------- children (NNA)
+    match /children/{childId} {
+      function validChild(d) {
+        return d.keys().hasOnly(['code', 'birthYear', 'dunnQuadrant', 'ownerUid', 'tutorUids',
+                                 'consentConfirmedAtMs', 'createdAtMs', 'lastInviteCode'])
+          && d.keys().hasAll(['code', 'birthYear', 'ownerUid', 'tutorUids',
+                              'consentConfirmedAtMs', 'createdAtMs'])
+          && d.code is string && d.code.matches('N-' + codeChars() + '{4}')
+          && d.birthYear is int && d.birthYear >= 1990 && d.birthYear <= request.time.year()
+          && d.get('dunnQuadrant', null) in [null, 'seeking', 'avoiding', 'sensitivity', 'registration']
+          && d.tutorUids is list
+          && d.consentConfirmedAtMs is int && d.createdAtMs is int;
+      }
+      function linked() { return signedIn() && request.auth.uid in resource.data.tutorUids; }
+      function isOwner() { return signedIn() && request.auth.uid == resource.data.ownerUid; }
+      function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+      function oldTutors() { return resource.data.tutorUids; }
+      function newTutors() { return request.resource.data.tutorUids; }
+      function noDuplicates(l) { return l.toSet().size() == l.size(); }
+
+      // A linked tutor edits the research-visible profile.
+      function editsProfile() {
+        return linked() && changed().hasOnly(['birthYear', 'dunnQuadrant'])
+          && validChild(request.resource.data);
+      }
+      // A tutor other than the owner unlinks themself.
+      function leaves() {
+        return linked() && !isOwner() && changed().hasOnly(['tutorUids'])
+          && noDuplicates(newTutors())
+          && newTutors().toSet() == oldTutors().toSet().difference([request.auth.uid].toSet());
+      }
+      // The owner unlinks other tutors, never themself.
+      function ownerUnlinks() {
+        return isOwner() && changed().hasOnly(['tutorUids'])
+          && noDuplicates(newTutors())
+          && newTutors().hasAll([resource.data.ownerUid])
+          && oldTutors().hasAll(newTutors())
+          && newTutors().size() < oldTutors().size();
+      }
+      // A tutor joins with a valid invite, deleting it in the same batch so it
+      // cannot be used again.
+      function joinsWithInvite() {
+        let code = request.resource.data.lastInviteCode;
+        let invitePath = docPath('invites', code);
+        let invite = get(invitePath).data;
+        return isTutor() && !linked()
+          && changed().hasOnly(['tutorUids', 'lastInviteCode'])
+          && newTutors() == oldTutors().concat([request.auth.uid])
+          && invite.childId == childId
+          && invite.expiresAtMs > nowMs()
+          && !existsAfter(invitePath);
+      }
+
+      // Written against resource.data so `tutorUids array-contains uid` list
+      // queries are allowed.
+      allow read: if isStaff() || linked();
+      allow create: if isTutor()
+        && validChild(request.resource.data)
+        && !('lastInviteCode' in request.resource.data)
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.tutorUids == [request.auth.uid];
+      allow update: if editsProfile() || leaves() || ownerUnlinks() || joinsWithInvite();
+      allow delete: if isOwner();
+
+      // Identifying data: linked tutors only (not staff).
+      match /private/{docId} {
+        function validProfile(d) {
+          return docId == 'profile'
+            && d.keys().hasOnly(['displayName', 'avatarId'])
+            && d.keys().hasAll(['displayName', 'avatarId'])
+            && d.displayName is string && d.displayName.size() >= 1 && d.displayName.size() <= 40
+            && d.avatarId is string && d.avatarId.size() >= 1 && d.avatarId.size() <= 40;
+        }
+
+        allow read: if isLinked(childId);
+        allow update: if isLinked(childId) && validProfile(request.resource.data);
+        // getAfter: the child and its profile are created in one batch.
+        allow create: if signedIn()
+          && request.auth.uid in getAfter(docPath('children', childId)).data.tutorUids
+          && validProfile(request.resource.data);
+        // Deleted together with the child, before it (owner only).
+        allow delete: if signedIn()
+          && request.auth.uid == get(docPath('children', childId)).data.ownerUid;
+      }
+
+      match /sessions/{sessionId} {
+        function validNewSession(d) {
+          return d.keys().hasOnly(['childId', 'deviceId', 'createdByUid', 'startedAtMs', 'endedAtMs',
+                                   'status', 'packetCount', 'streams', 'files', 'live', 'appVersion'])
+            && d.childId == childId
+            && d.createdByUid == request.auth.uid
+            && d.status == 'recording'
+            && d.deviceId is string && d.startedAtMs is int;
+        }
+
+        allow read: if isStaff() || isLinked(childId);
+        allow create: if isLinked(childId) && validNewSession(request.resource.data);
+        // The recording phone updates live values / status / files; it cannot
+        // move the session to another child or tutor.
+        allow update: if isLinked(childId)
+          && resource.data.createdByUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['live', 'status', 'endedAtMs', 'packetCount', 'streams', 'files'])
+          && request.resource.data.status in ['recording', 'uploading', 'uploaded', 'failed'];
+        // Research data: deletion goes through admin tooling (retention policy).
+        allow delete: if false;
+      }
+    }
+
+    // Staff read sessions across all children (collection-group query).
+    match /{path=**}/sessions/{sessionId} {
+      allow read: if isStaff();
+    }
+
+    // ---------------------------------------------------------------- invites
+    match /invites/{code} {
+      // Get by exact code only; never list, so codes cannot be enumerated.
+      allow get: if isTutor();
+      allow list: if false;
+      // `create` never overwrites, so an existing code cannot be hijacked.
+      allow create: if isTutor()
+        && code.matches(codeChars() + '{6}')
+        && request.resource.data.keys().hasOnly(['childId', 'createdByUid', 'createdAtMs', 'expiresAtMs'])
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.childId is string
+        && isLinked(request.resource.data.childId)
+        && request.resource.data.createdAtMs is int
+        && request.resource.data.expiresAtMs is int
+        && request.resource.data.expiresAtMs > nowMs()
+        // 48 h validity plus 5 min of clock skew.
+        && request.resource.data.expiresAtMs <= nowMs() + (48 * 60 + 5) * 60 * 1000;
+      allow update: if false;
+      // Cancelled by a linked tutor, or consumed by the tutor who joins (who is
+      // linked once the batch is applied).
+      allow delete: if signedIn()
+        && request.auth.uid in getAfter(docPath('children', resource.data.childId)).data.tutorUids;
+    }
+  }
+}

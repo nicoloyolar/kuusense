@@ -1,0 +1,28 @@
+name: kuusense_ui
+description: KúuSense visual identity for Flutter apps — design tokens, theme, logo and shared assets.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+flutter:
+  assets:
+    - assets/brand/
+    - assets/images/
+  # When the brand fonts arrive, put the files in assets/fonts/ and declare them
+  # here, then set font.heading / font.body in shared/design/tokens.json, e.g.:
+  # fonts:
+  #   - family: KuuHeading
+  #     fonts:
+  #       - asset: assets/fonts/KuuHeading-Bold.ttf
+  #         weight: 700

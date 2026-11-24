@@ -1,0 +1,19 @@
+name: emotibit_cli
+description: Terminal tool to discover, monitor, record and analyze EmotiBit devices (and run the simulator).
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  args: ^2.7.0
+  emotibit:
+    path: ../../packages/emotibit
+
+dev_dependencies:
+  lints: ^6.0.0
+
+executables:
+  emotibit: emotibit
