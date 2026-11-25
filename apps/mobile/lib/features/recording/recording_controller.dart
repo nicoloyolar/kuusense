@@ -40,7 +40,8 @@ class RecordingController extends ChangeNotifier {
   StreamSubscription<EmotiBitPacket>? _packetSub;
   StreamSubscription<EmotiBitConnectionStatus>? _statusSub;
 
-  bool get isConnected => connection?.status == EmotiBitConnectionStatus.connected;
+  bool get isConnected =>
+      connection?.status == EmotiBitConnectionStatus.connected;
 
   Future<List<DiscoveredEmotiBit>> scan({String? manualIp}) {
     final ip = manualIp?.trim();
@@ -109,7 +110,8 @@ class RecordingController extends ChangeNotifier {
     _dirty = true;
   }
 
-  double? get temperature => latest[TypeTag.temperature0] ?? latest[TypeTag.thermopile];
+  double? get temperature =>
+      latest[TypeTag.temperature0] ?? latest[TypeTag.thermopile];
 
   // ---------------------------------------------------------------- recording
   SessionRecorder? _recorder;
@@ -117,34 +119,69 @@ class RecordingController extends ChangeNotifier {
   Timer? _liveTimer;
   UploadState uploadState = UploadState.idle;
   String? uploadError;
-  final List<String> markers = [];
+
+  /// Behaviors and notes marked during the current session, in order.
+  final List<SessionEvent> events = [];
 
   bool get isRecording => _recorder != null && _recorder!.endedAt == null;
   Duration get elapsed => _recorder?.duration ?? Duration.zero;
 
-  Future<void> startRecording() async {
+  Future<void> startRecording({
+    SessionContext context = const SessionContext(),
+  }) async {
     final conn = connection;
     if (conn == null || childId == null || isRecording) return;
     uploadState = UploadState.idle;
     uploadError = null;
-    markers.clear();
+    events.clear();
     final s = await repo.startSession(
       childId: childId!,
       deviceId: conn.device.deviceId,
       appVersion: '0.1.0',
+      context: context,
     );
     session = s;
     final dir = await getApplicationDocumentsDirectory();
-    _recorder = await SessionRecorder.start(Directory('${dir.path}/sessions/${s.id}'));
+    _recorder = await SessionRecorder.start(
+      Directory('${dir.path}/sessions/${s.id}'),
+    );
     _liveTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pushLive());
     notifyListeners();
   }
 
-  void addMarker(String label) {
-    if (!isRecording) return;
-    _recorder!.mark(label);
-    connection?.sendUserNote(label); // also lands on the device's SD file
-    markers.add(label);
+  /// Marks a behavior from [BehaviorCatalog] (or a note) at the current time.
+  void addEvent(String kind, {String? note}) {
+    final s = session;
+    if (!isRecording || s == null) return;
+    final text = note?.trim();
+    final event = SessionEvent(
+      atMs: DateTime.now().millisecondsSinceEpoch,
+      kind: kind,
+      note: (text == null || text.isEmpty)
+          ? null
+          : text.substring(0, text.length.clamp(0, SessionEvent.maxNoteLength)),
+    );
+    if (events.length >= SessionEvent.maxPerSession) return;
+    // events.csv keeps the machine id; the note text goes after a colon.
+    _recorder!.mark(event.note == null ? kind : '$kind:${event.note}');
+    connection?.sendUserNote(event.label); // also lands on the device's SD file
+    events.add(event);
+    repo
+        .addSessionEvent(s.childId, s.id, event)
+        .catchError((Object e) => debugPrint('event push failed: $e'));
+    notifyListeners();
+  }
+
+  /// Removes the last marked event (a mistaken tap). events.csv keeps an
+  /// `undo:` line instead of erasing, so the raw record stays append-only.
+  void undoLastEvent() {
+    final s = session;
+    if (!isRecording || s == null || events.isEmpty) return;
+    final event = events.removeLast();
+    _recorder!.mark('undo:${event.kind}');
+    repo
+        .removeSessionEvent(s.childId, s.id, event)
+        .catchError((Object e) => debugPrint('event undo failed: $e'));
     notifyListeners();
   }
 
@@ -185,6 +222,8 @@ class RecordingController extends ChangeNotifier {
         'endedAtMs': rec.endedAt!.millisecondsSinceEpoch,
         'packetCount': rec.packetCount,
         'streams': rec.tagsSeen.toList()..sort(),
+        // Full list again, in case a live event write was lost offline.
+        'events': [for (final e in events) e.toMap()],
       });
       final files = <String, String>{};
       for (final f in rec.files) {
@@ -214,7 +253,9 @@ class RecordingController extends ChangeNotifier {
   Future<void> retryUpload() async {
     final rec = _recorder;
     final s = session;
-    if (rec != null && s != null && uploadState == UploadState.failed) await _upload(s, rec);
+    if (rec != null && s != null && uploadState == UploadState.failed) {
+      await _upload(s, rec);
+    }
   }
 
   @override

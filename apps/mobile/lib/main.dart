@@ -3,11 +3,14 @@ import 'package:kuusense_firebase/kuusense_firebase.dart';
 import 'package:kuusense_ui/kuusense_ui.dart';
 
 import 'features/auth/login_screen.dart';
+import 'firebase_options_test.dart';
 import 'features/home/signed_in_root.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initKuusenseFirebase();
+  await initKuusenseFirebase(
+    productionOptions: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(KuusenseApp(auth: FirebaseAuthService()));
 }
 
@@ -21,12 +24,15 @@ class KuusenseApp extends StatelessWidget {
       title: 'KúuSense',
       debugShowCheckedModeBanner: false,
       theme: KuuTheme.light(),
-      darkTheme: KuuTheme.dark(),
+      // Light only until the brand defines a dark mode (KuuTheme.dark() is kept).
+      themeMode: ThemeMode.light,
       home: StreamBuilder<String?>(
         stream: auth.userChanges,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
           }
           final uid = snap.data;
           if (uid == null) return LoginScreen(auth: auth);

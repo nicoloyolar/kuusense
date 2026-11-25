@@ -1,18 +1,27 @@
 import 'package:flutter/material.dart';
 
 import 'generated/tokens.g.dart';
+import 'theme.dart';
 
 /// Paths of brand assets bundled in this package. Drop the official files in
 /// `shared/kuusense_ui/assets/brand/` with these names and every app picks them up.
 abstract final class KuuAssets {
   static const package = 'kuusense_ui';
 
-  /// Full logo (symbol + wordmark), transparent PNG.
-  /// PROVISIONAL: extracted from a low-res image; replace with the official file.
+  /// Stacked logo (symbol over wordmark), transparent PNG. Extracted from
+  /// the official JPG; replace with the client's PNG/SVG when available.
   static const logo = 'assets/brand/logo.png';
 
-  /// Full logo for dark backgrounds (light wordmark).
+  /// Stacked logo for dark backgrounds (light wordmark).
   static const logoDark = 'assets/brand/logo_dark.png';
+
+  /// Horizontal logo (symbol beside wordmark), for headers.
+  static const logoHorizontal = 'assets/brand/logo_horizontal.png';
+  static const logoHorizontalDark = 'assets/brand/logo_horizontal_dark.png';
+
+  /// Brand photo (family with tablet, tagline "Tecnología para acompañar"
+  /// baked in). PROVISIONAL low-res copy; replace with the original file.
+  static const heroFamily = 'assets/images/hero_family.png';
 
   /// Symbol only, square, transparent PNG.
   static const symbol = 'assets/brand/symbol.png';
@@ -21,16 +30,26 @@ abstract final class KuuAssets {
 /// The KúuSense logo. Until the official file exists it renders a text
 /// wordmark in brand colors, so screens can be built now.
 class KuusenseLogo extends StatelessWidget {
-  const KuusenseLogo({super.key, this.height = 96, this.symbolOnly = false});
+  const KuusenseLogo({
+    super.key,
+    this.height = 96,
+    this.symbolOnly = false,
+    this.horizontal = false,
+  });
 
   final double height;
   final bool symbolOnly;
+
+  /// Symbol beside the wordmark, for headers.
+  final bool horizontal;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final asset = symbolOnly
         ? KuuAssets.symbol
+        : horizontal
+        ? (isDark ? KuuAssets.logoHorizontalDark : KuuAssets.logoHorizontal)
         : (isDark ? KuuAssets.logoDark : KuuAssets.logo);
     return Semantics(
       label: 'KúuSense',
@@ -64,13 +83,22 @@ class _Wordmark extends StatelessWidget {
       height: height,
       child: Center(
         child: Text.rich(
-          TextSpan(children: [
-            TextSpan(text: 'Kúu', style: style.copyWith(color: KuuColor.brandSecondary)),
-            TextSpan(
-              text: 'Sense',
-              style: style.copyWith(color: isDark ? KuuColor.darkOnSurface : KuuColor.brandPrimary),
-            ),
-          ]),
+          TextSpan(
+            children: [
+              TextSpan(
+                text: 'Kúu',
+                style: style.copyWith(color: KuuColor.brandSecondary),
+              ),
+              TextSpan(
+                text: 'Sense',
+                style: style.copyWith(
+                  color: isDark
+                      ? KuuColor.darkOnSurface
+                      : KuuColor.brandPrimary,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -103,4 +131,99 @@ class KuuBrandBackground extends StatelessWidget {
       child: child,
     );
   }
+}
+
+/// The brand photo with a navy fade at the top (so a light logo reads over
+/// it) and, optionally, a fade into [fadeTo] at the bottom. Used by the web
+/// login panel and the mobile login header so both share one look.
+class KuuHeroPhoto extends StatelessWidget {
+  const KuuHeroPhoto({
+    super.key,
+    this.alignment = const Alignment(0, 0.8),
+    this.fadeTo,
+  });
+
+  /// Which part of the photo stays visible when it is cropped.
+  final Alignment alignment;
+
+  /// Page color to blend into at the bottom edge; null for no bottom fade.
+  final Color? fadeTo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const ColoredBox(color: KuuColor.brandPrimary),
+        Image.asset(
+          KuuAssets.heroFamily,
+          package: KuuAssets.package,
+          fit: BoxFit.cover,
+          alignment: alignment,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: const [0, 0.38, 0.6],
+              colors: [
+                KuuColor.brandPrimary.withValues(alpha: 0.92),
+                KuuColor.brandPrimary.withValues(alpha: 0.35),
+                KuuColor.brandPrimary.withValues(alpha: 0),
+              ],
+            ),
+          ),
+        ),
+        if (fadeTo != null)
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: const [0.65, 1],
+                colors: [fadeTo!.withValues(alpha: 0), fadeTo!],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// The light logo, for use over the brand photo or other navy surfaces.
+class KuusenseLogoOnBrand extends StatelessWidget {
+  const KuusenseLogoOnBrand({
+    super.key,
+    this.height = 96,
+    this.horizontal = false,
+  });
+  final double height;
+  final bool horizontal;
+
+  @override
+  Widget build(BuildContext context) => Theme(
+    data: KuuTheme.dark(),
+    child: KuusenseLogo(height: height, horizontal: horizontal),
+  );
+}
+
+/// Raised card that holds the auth forms on web and mobile.
+class KuuFormCard extends StatelessWidget {
+  const KuuFormCard({
+    super.key,
+    required this.child,
+    this.padding = KuuSpacing.xl,
+  });
+  final Widget child;
+  final double padding;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    elevation: 6,
+    shadowColor: KuuColor.brandPrimary.withValues(alpha: 0.18),
+    child: Padding(padding: EdgeInsets.all(padding), child: child),
+  );
 }

@@ -5,12 +5,14 @@ publish_to: none
 resolution: workspace
 
 environment:
-  sdk: ^3.6.0
+  sdk: ^3.8.0
   flutter: ">=3.27.0"
 
 dependencies:
   flutter:
     sdk: flutter
+  kuusense_models:
+    path: ../../packages/kuusense_models
 
 dev_dependencies:
   flutter_lints: ^6.0.0

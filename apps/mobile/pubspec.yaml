@@ -45,6 +45,7 @@ dependencies:
   firebase_auth: ^7.1.0
   firebase_storage: ^14.1.0
 
+  firebase_core: any
 dev_dependencies:
   integration_test:
     sdk: flutter

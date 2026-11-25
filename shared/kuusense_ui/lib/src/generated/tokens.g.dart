@@ -5,10 +5,10 @@
 import 'dart:ui';
 
 abstract final class KuuColor {
-  static const brandPrimary = Color(0xFF15448C);
-  static const brandSecondary = Color(0xFF1BAE7B);
+  static const brandPrimary = Color(0xFF1E3A8A);
+  static const brandSecondary = Color(0xFF1AAA76);
   static const brandAccent = Color(0xFF2B5DA6);
-  static const brandHighlight = Color(0xFF2884BC);
+  static const brandHighlight = Color(0xFF2E86BA);
   static const lightBackground = Color(0xFFF4F7FB);
   static const lightSurface = Color(0xFFFFFFFF);
   static const lightOnSurface = Color(0xFF14233D);
@@ -46,4 +46,3 @@ abstract final class KuuSpacing {
   static const double lg = 24.0;
   static const double xl = 40.0;
 }
-

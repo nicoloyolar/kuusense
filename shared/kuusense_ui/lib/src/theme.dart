@@ -6,7 +6,11 @@ import 'generated/tokens.g.dart';
 /// widget via `Theme.of(context).extension<KuuStateColors>()!`.
 @immutable
 class KuuStateColors extends ThemeExtension<KuuStateColors> {
-  const KuuStateColors({required this.stable, required this.alert, required this.preCrisis});
+  const KuuStateColors({
+    required this.stable,
+    required this.alert,
+    required this.preCrisis,
+  });
 
   final Color stable;
   final Color alert;
@@ -19,7 +23,8 @@ class KuuStateColors extends ThemeExtension<KuuStateColors> {
   );
 
   @override
-  KuuStateColors copyWith({Color? stable, Color? alert, Color? preCrisis}) => KuuStateColors(
+  KuuStateColors copyWith({Color? stable, Color? alert, Color? preCrisis}) =>
+      KuuStateColors(
         stable: stable ?? this.stable,
         alert: alert ?? this.alert,
         preCrisis: preCrisis ?? this.preCrisis,
@@ -39,22 +44,22 @@ class KuuStateColors extends ThemeExtension<KuuStateColors> {
 /// identity changes in one place (shared/design/tokens.json).
 abstract final class KuuTheme {
   static ThemeData light() => _build(
-        brightness: Brightness.light,
-        background: KuuColor.lightBackground,
-        surface: KuuColor.lightSurface,
-        onSurface: KuuColor.lightOnSurface,
-        muted: KuuColor.lightMuted,
-        outline: KuuColor.lightOutline,
-      );
+    brightness: Brightness.light,
+    background: KuuColor.lightBackground,
+    surface: KuuColor.lightSurface,
+    onSurface: KuuColor.lightOnSurface,
+    muted: KuuColor.lightMuted,
+    outline: KuuColor.lightOutline,
+  );
 
   static ThemeData dark() => _build(
-        brightness: Brightness.dark,
-        background: KuuColor.darkBackground,
-        surface: KuuColor.darkSurface,
-        onSurface: KuuColor.darkOnSurface,
-        muted: KuuColor.darkMuted,
-        outline: KuuColor.darkOutline,
-      );
+    brightness: Brightness.dark,
+    background: KuuColor.darkBackground,
+    surface: KuuColor.darkSurface,
+    onSurface: KuuColor.darkOnSurface,
+    muted: KuuColor.darkMuted,
+    outline: KuuColor.darkOutline,
+  );
 
   static ThemeData _build({
     required Brightness brightness,
@@ -67,10 +72,11 @@ abstract final class KuuTheme {
     final isDark = brightness == Brightness.dark;
     final scheme = ColorScheme(
       brightness: brightness,
-      // In dark mode the navy primary lacks contrast; the logo green leads.
-      primary: isDark ? KuuColor.brandSecondary : KuuColor.brandPrimary,
-      onPrimary: isDark ? KuuColor.darkBackground : Colors.white,
-      secondary: isDark ? KuuColor.brandHighlight : KuuColor.brandSecondary,
+      // Blue always leads (navy in light, the logo's sky blue in dark, where
+      // navy lacks contrast); green is only an accent.
+      primary: isDark ? KuuColor.brandHighlight : KuuColor.brandPrimary,
+      onPrimary: Colors.white,
+      secondary: KuuColor.brandSecondary,
       onSecondary: KuuColor.lightOnSurface,
       tertiary: KuuColor.brandHighlight,
       onTertiary: Colors.white,
@@ -82,7 +88,9 @@ abstract final class KuuTheme {
       outline: outline,
       outlineVariant: outline,
     );
-    final pill = RoundedRectangleBorder(borderRadius: BorderRadius.circular(KuuRadius.pill));
+    final pill = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(KuuRadius.pill),
+    );
     final fieldRadius = BorderRadius.circular(KuuRadius.md);
     final base = ThemeData(
       useMaterial3: true,
@@ -92,28 +100,39 @@ abstract final class KuuTheme {
       extensions: const [KuuStateColors.standard],
     );
     return base.copyWith(
-      textTheme: base.textTheme.apply(
-        fontFamily: KuuFont.body,
-        bodyColor: onSurface,
-        displayColor: onSurface,
-      ).copyWith(
-        headlineMedium: base.textTheme.headlineMedium?.copyWith(
-          fontFamily: KuuFont.heading,
-          fontWeight: FontWeight.w700,
-          color: onSurface,
-        ),
-        headlineSmall: base.textTheme.headlineSmall?.copyWith(
-          fontFamily: KuuFont.heading,
-          fontWeight: FontWeight.w700,
-          color: onSurface,
-        ),
-      ),
+      textTheme: base.textTheme
+          .apply(
+            fontFamily: KuuFont.body,
+            bodyColor: onSurface,
+            displayColor: onSurface,
+          )
+          .copyWith(
+            headlineMedium: base.textTheme.headlineMedium?.copyWith(
+              fontFamily: KuuFont.heading,
+              fontWeight: FontWeight.w700,
+              color: onSurface,
+            ),
+            headlineSmall: base.textTheme.headlineSmall?.copyWith(
+              fontFamily: KuuFont.heading,
+              fontWeight: FontWeight.w700,
+              color: onSurface,
+            ),
+          ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surface.withValues(alpha: isDark ? 0.6 : 0.85),
-        contentPadding: const EdgeInsets.symmetric(horizontal: KuuSpacing.md, vertical: 14),
-        border: OutlineInputBorder(borderRadius: fieldRadius, borderSide: BorderSide(color: outline)),
-        enabledBorder: OutlineInputBorder(borderRadius: fieldRadius, borderSide: BorderSide(color: outline)),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: KuuSpacing.md,
+          vertical: 14,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: fieldRadius,
+          borderSide: BorderSide(color: outline),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: fieldRadius,
+          borderSide: BorderSide(color: outline),
+        ),
         focusedBorder: OutlineInputBorder(
           borderRadius: fieldRadius,
           borderSide: BorderSide(color: scheme.primary, width: 2),
@@ -127,7 +146,10 @@ abstract final class KuuTheme {
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(shape: pill, minimumSize: const Size.fromHeight(48)),
+        style: OutlinedButton.styleFrom(
+          shape: pill,
+          minimumSize: const Size.fromHeight(48),
+        ),
       ),
       cardTheme: CardThemeData(
         color: surface,
@@ -137,7 +159,9 @@ abstract final class KuuTheme {
           side: BorderSide(color: outline),
         ),
       ),
-      snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+      snackBarTheme: const SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 }

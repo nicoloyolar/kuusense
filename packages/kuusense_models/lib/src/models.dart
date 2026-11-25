@@ -140,6 +140,10 @@ class Child {
 
   final String id;
 
+  /// Ids of fictional demo children (firebase/admin/demo-data.mjs).
+  static const demoIdPrefix = 'demo-';
+  bool get isDemo => id.startsWith(demoIdPrefix);
+
   /// Pseudonymous code shown to researchers, e.g. `N-4F7Q`.
   final String code;
   final int birthYear;
@@ -284,6 +288,139 @@ class LiveSnapshot {
       };
 }
 
+/// Where a session took place.
+enum SessionPlace {
+  home,
+  school,
+  therapy,
+  other;
+
+  String get label => switch (this) {
+        SessionPlace.home => 'Casa',
+        SessionPlace.school => 'Colegio',
+        SessionPlace.therapy => 'Terapia',
+        SessionPlace.other => 'Otro',
+      };
+}
+
+/// What the child was mainly doing during a session.
+enum SessionActivity {
+  freePlay,
+  classwork,
+  meal,
+  transition,
+  therapy,
+  rest,
+  other;
+
+  String get label => switch (this) {
+        SessionActivity.freePlay => 'Juego libre',
+        SessionActivity.classwork => 'Clase o tarea',
+        SessionActivity.meal => 'Comida',
+        SessionActivity.transition => 'Transición',
+        SessionActivity.therapy => 'Sesión de terapia',
+        SessionActivity.rest => 'Descanso',
+        SessionActivity.other => 'Otra',
+      };
+}
+
+/// Context of a session, filled in by the tutor when recording starts. Every
+/// field is optional so the tutor can skip it. No personal data: only kinds.
+class SessionContext {
+  const SessionContext({this.place, this.activity, this.present = const []});
+
+  final SessionPlace? place;
+  final SessionActivity? activity;
+
+  /// Kinds of tutors present during the session.
+  final List<TutorType> present;
+
+  bool get isEmpty => place == null && activity == null && present.isEmpty;
+
+  factory SessionContext.fromMap(Map<String, dynamic> m) => SessionContext(
+        place: SessionPlace.values.asNameMap()[m['place']],
+        activity: SessionActivity.values.asNameMap()[m['activity']],
+        present: [
+          for (final t in (m['present'] as List? ?? const []))
+            if (TutorType.values.asNameMap()[t] case final type?) type,
+        ],
+      );
+
+  Map<String, dynamic> toMap() => {
+        'place': place?.name,
+        'activity': activity?.name,
+        'present': [for (final t in present) t.name],
+      };
+}
+
+/// A behavior or event the tutor can mark with one tap while recording.
+/// These are the labels the AI team trains on.
+class BehaviorMarker {
+  const BehaviorMarker(this.id, this.label);
+
+  /// Stable identifier stored with the event; never rename an existing id.
+  final String id;
+  final String label;
+}
+
+/// Markers offered in the app.
+///
+/// PROVISIONAL list until the client's therapists define the official one
+/// (open question in docs/REQUISITOS.md). Adding markers is safe; ids already
+/// used in recorded sessions must keep their meaning.
+abstract final class BehaviorCatalog {
+  static const noteId = 'note';
+
+  static const markers = [
+    BehaviorMarker('restless', 'Inquietud'),
+    BehaviorMarker('coversEars', 'Se tapa los oídos'),
+    BehaviorMarker('repetitiveMovement', 'Movimientos repetitivos'),
+    BehaviorMarker('crying', 'Llanto'),
+    BehaviorMarker('crisisStart', 'Inicio de crisis'),
+    BehaviorMarker('crisisEnd', 'Fin de crisis'),
+    BehaviorMarker('strategyApplied', 'Se aplicó estrategia'),
+    BehaviorMarker('calmed', 'Se calmó'),
+  ];
+
+  /// Display label for a stored event kind (unknown ids are shown as is).
+  static String labelOf(String id) => id == noteId
+      ? 'Nota'
+      : markers.firstWhere((m) => m.id == id, orElse: () => BehaviorMarker(id, id)).label;
+}
+
+/// One marked event in a session. [atMs] is phone time; the same event is
+/// also written to the session's `events.csv` with the device clock for
+/// alignment with the signals.
+class SessionEvent {
+  const SessionEvent({required this.atMs, required this.kind, this.note});
+
+  /// Upper bound kept by the security rules.
+  static const maxPerSession = 1000;
+  static const maxNoteLength = 280;
+
+  final int atMs;
+
+  /// A [BehaviorMarker.id] or [BehaviorCatalog.noteId].
+  final String kind;
+
+  /// Free text, only for notes.
+  final String? note;
+
+  String get label => kind == BehaviorCatalog.noteId ? (note ?? '') : BehaviorCatalog.labelOf(kind);
+
+  factory SessionEvent.fromMap(Map<String, dynamic> m) => SessionEvent(
+        atMs: _ms(m['atMs']),
+        kind: m['kind'] as String? ?? '',
+        note: m['note'] as String?,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'atMs': atMs,
+        'kind': kind,
+        if (note != null) 'note': note,
+      };
+}
+
 /// One continuous EmotiBit recording of a child. Raw data lives in Cloud
 /// Storage; this doc holds metadata only.
 class RecordingSession {
@@ -300,6 +437,8 @@ class RecordingSession {
     this.files = const {},
     this.live,
     this.appVersion = '',
+    this.context = const SessionContext(),
+    this.events = const [],
   });
 
   final String id;
@@ -320,6 +459,13 @@ class RecordingSession {
   final Map<String, String> files;
   final LiveSnapshot? live;
   final String appVersion;
+  final SessionContext context;
+
+  /// Behaviors and notes marked during the session, in order.
+  final List<SessionEvent> events;
+
+  /// Belongs to a fictional demo child.
+  bool get isDemo => childId.startsWith(Child.demoIdPrefix);
 
   Duration get duration =>
       Duration(milliseconds: (endedAtMs ?? DateTime.now().millisecondsSinceEpoch) - startedAtMs);
@@ -339,6 +485,13 @@ class RecordingSession {
             ? null
             : LiveSnapshot.fromMap(Map<String, dynamic>.from(m['live'] as Map)),
         appVersion: m['appVersion'] as String? ?? '',
+        context: m['context'] == null
+            ? const SessionContext()
+            : SessionContext.fromMap(Map<String, dynamic>.from(m['context'] as Map)),
+        events: [
+          for (final e in (m['events'] as List? ?? const []))
+            SessionEvent.fromMap(Map<String, dynamic>.from(e as Map)),
+        ],
       );
 
   Map<String, dynamic> toMap() => {
@@ -353,5 +506,7 @@ class RecordingSession {
         'files': files,
         'live': live?.toMap(),
         'appVersion': appVersion,
+        'context': context.toMap(),
+        'events': [for (final e in events) e.toMap()],
       };
 }

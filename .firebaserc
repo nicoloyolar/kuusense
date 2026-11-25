@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "demo-kuusense"
+    "default": "demo-kuusense",
+    "test": "kuusense-test"
   }
 }

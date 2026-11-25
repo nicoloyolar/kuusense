@@ -3,6 +3,8 @@
 library;
 
 export 'src/brand.dart';
+export 'src/format.dart';
 export 'src/generated/tokens.g.dart';
+export 'src/session_ui.dart';
 export 'src/theme.dart';
 export 'src/validators.dart';

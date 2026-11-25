@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart';
 ///
 ///   USE_EMULATORS   true (default) → local Firebase emulators, project
 ///                   `demo-kuusense`, no real Firebase project required.
+///                   false → the real project in the app's
+///                   `firebase_options_<env>.dart` (today: kuusense-test).
 ///   EMULATOR_HOST   host running `firebase emulators:start`. Defaults to
 ///                   localhost (10.0.2.2 on the Android emulator). Use your
 ///                   computer's LAN IP when running on a physical phone.
@@ -42,8 +44,8 @@ FirebaseOptions _demoOptions() {
   );
 }
 
-/// Initializes Firebase. Pass [productionOptions] (from `flutterfire configure`)
-/// once a real project exists and run with `--dart-define=USE_EMULATORS=false`.
+/// Initializes Firebase. [productionOptions] (from `flutterfire configure`) are
+/// used only with `--dart-define=USE_EMULATORS=false`.
 Future<void> initKuusenseFirebase({FirebaseOptions? productionOptions}) async {
   if (!KuusenseEnv.useEmulators) {
     if (productionOptions == null) {

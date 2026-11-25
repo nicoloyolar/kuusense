@@ -34,71 +34,86 @@ class _ChildrenHomeScreenState extends State<ChildrenHomeScreen> {
 
   KuusenseRepository get repo => widget.repo;
 
-  Future<void> _open(String childId) => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ChildDetailScreen(repo: repo, recording: widget.recording, childId: childId),
-      ));
+  Future<void> _open(String childId) => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => ChildDetailScreen(
+        repo: repo,
+        recording: widget.recording,
+        childId: childId,
+      ),
+    ),
+  );
 
   Future<void> _register() async {
     String? newId;
-    final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(
-      builder: (_) => ChildFormScreen(
-        onSubmit: (d) async {
-          final child = await repo.registerChild(
-            displayName: d.displayName,
-            avatarId: d.avatarId,
-            birthYear: d.birthYear,
-            consentConfirmed: true,
-          );
-          newId = child.id;
-        },
+    final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ChildFormScreen(
+          onSubmit: (d) async {
+            final child = await repo.registerChild(
+              displayName: d.displayName,
+              avatarId: d.avatarId,
+              birthYear: d.birthYear,
+              consentConfirmed: true,
+            );
+            newId = child.id;
+          },
+        ),
       ),
-    ));
+    );
     if (ok == true && newId != null && mounted) await _open(newId!);
   }
 
   Future<void> _join() async {
     String? childId;
-    final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(
-      builder: (_) => JoinWithCodeScreen(onJoin: (code) async => childId = await repo.acceptInvite(code)),
-    ));
+    final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => JoinWithCodeScreen(
+          onJoin: (code) async => childId = await repo.acceptInvite(code),
+        ),
+      ),
+    );
     if (ok == true && childId != null && mounted) await _open(childId!);
   }
 
   void _showAddOptions() => showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (ctx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.child_care_rounded),
-                title: const Text('Registrar un niño/a'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _register();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.vpn_key_rounded),
-                title: const Text('Tengo un código de invitación'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _join();
-                },
-              ),
-            ],
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.child_care_rounded),
+            title: const Text('Registrar un niño/a'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _register();
+            },
           ),
-        ),
-      );
+          ListTile(
+            leading: const Icon(Icons.vpn_key_rounded),
+            title: const Text('Tengo un código de invitación'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _join();
+            },
+          ),
+        ],
+      ),
+    ),
+  );
 
-  void _editProfile() => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => TutorProfileScreen(
-          initialName: widget.tutor.displayName,
-          initialType: widget.tutor.type,
-          onSave: (name, type) => repo.saveMyTutorProfile(displayName: name, type: type),
-        ),
-      ));
+  void _editProfile() => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => TutorProfileScreen(
+        initialName: widget.tutor.displayName,
+        initialType: widget.tutor.type,
+        onSave: (name, type) =>
+            repo.saveMyTutorProfile(displayName: name, type: type),
+      ),
+    ),
+  );
 
   Future<void> _confirmSignOut() async {
     final ok = await confirmDialog(
@@ -115,12 +130,14 @@ class _ChildrenHomeScreenState extends State<ChildrenHomeScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mis niños/as'),
+        title: const KuusenseLogo(height: 30, horizontal: true),
+        centerTitle: false,
         actions: [
           PopupMenuButton<String>(
             tooltip: 'Mi cuenta',
             icon: const Icon(Icons.account_circle_rounded),
-            onSelected: (v) => v == 'profile' ? _editProfile() : _confirmSignOut(),
+            onSelected: (v) =>
+                v == 'profile' ? _editProfile() : _confirmSignOut(),
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'profile', child: Text('Editar mi perfil')),
               PopupMenuItem(value: 'signout', child: Text('Cerrar sesión')),
@@ -133,10 +150,14 @@ class _ChildrenHomeScreenState extends State<ChildrenHomeScreen> {
         builder: (context, snap) {
           if (snap.hasError) {
             debugPrint('children stream: ${snap.error}');
-            return const Center(child: Text(genericErrorMessage, textAlign: TextAlign.center));
+            return const Center(
+              child: Text(genericErrorMessage, textAlign: TextAlign.center),
+            );
           }
           final children = snap.data;
-          if (children == null) return const Center(child: CircularProgressIndicator());
+          if (children == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
           if (children.isEmpty) {
             return _EmptyState(
               tutorName: widget.tutor.displayName,
@@ -145,14 +166,50 @@ class _ChildrenHomeScreenState extends State<ChildrenHomeScreen> {
             );
           }
           return ListView(
-            padding: const EdgeInsets.all(KuuSpacing.md),
+            padding: const EdgeInsets.fromLTRB(
+              KuuSpacing.md,
+              KuuSpacing.sm,
+              KuuSpacing.md,
+              96,
+            ),
             children: [
               Padding(
-                padding: const EdgeInsets.all(KuuSpacing.sm),
-                child: Text('Hola, ${widget.tutor.displayName}', style: theme.textTheme.titleLarge),
+                padding: const EdgeInsets.fromLTRB(
+                  KuuSpacing.xs,
+                  0,
+                  KuuSpacing.xs,
+                  KuuSpacing.md,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Hola, ${widget.tutor.displayName}',
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: KuuSpacing.xs),
+                    Text(
+                      'Así van las últimas dos semanas',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: KuuSpacing.sm),
+                    const KuuOutcomeLegend(),
+                  ],
+                ),
               ),
-              for (final c in children) _ChildTile(repo: repo, child: c, onTap: () => _open(c.id)),
-              const SizedBox(height: 80),
+              for (final c in children)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: KuuSpacing.md),
+                  child: _ChildCard(
+                    repo: repo,
+                    child: c,
+                    onTap: () => _open(c.id),
+                  ),
+                ),
             ],
           );
         },
@@ -166,42 +223,145 @@ class _ChildrenHomeScreenState extends State<ChildrenHomeScreen> {
   }
 }
 
-class _ChildTile extends StatefulWidget {
-  const _ChildTile({required this.repo, required this.child, required this.onTap});
+/// One child: avatar and nickname, activity of the last 14 days, figures
+/// of the last 30 days and how the last session went.
+class _ChildCard extends StatefulWidget {
+  const _ChildCard({
+    required this.repo,
+    required this.child,
+    required this.onTap,
+  });
   final KuusenseRepository repo;
   final Child child;
   final VoidCallback onTap;
 
   @override
-  State<_ChildTile> createState() => _ChildTileState();
+  State<_ChildCard> createState() => _ChildCardState();
 }
 
-class _ChildTileState extends State<_ChildTile> {
-  late final Stream<ChildProfile?> _profile = widget.repo.watchChildProfile(widget.child.id);
+class _ChildCardState extends State<_ChildCard> {
+  late final Stream<ChildProfile?> _profile = widget.repo.watchChildProfile(
+    widget.child.id,
+  );
+  late final Stream<List<RecordingSession>> _sessions = widget.repo
+      .watchSessions(widget.child.id);
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
     return StreamBuilder<ChildProfile?>(
       stream: _profile,
-      builder: (context, snap) {
-        final p = snap.data;
-        return Card(
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: KuuSpacing.md, vertical: KuuSpacing.sm),
-            leading: ChildAvatar(avatarId: p?.avatarId ?? ''),
-            title: Text(p?.displayName ?? '…'),
-            subtitle: Text('${widget.child.approximateAge()} años aprox.'),
-            trailing: const Icon(Icons.chevron_right_rounded),
+      builder: (context, profileSnap) => StreamBuilder<List<RecordingSession>>(
+        stream: _sessions,
+        builder: (context, sessionSnap) {
+          final p = profileSnap.data;
+          final sessions = sessionSnap.data ?? const <RecordingSession>[];
+          final monthAgo = DateTime.now()
+              .subtract(const Duration(days: 30))
+              .millisecondsSinceEpoch;
+          final month = sessions
+              .where((s) => s.startedAtMs >= monthAgo)
+              .toList();
+          final crises = month
+              .where((s) => SessionOutcome.of(s) == SessionOutcome.crisis)
+              .length;
+          final last = sessions.isEmpty ? null : sessions.first; // newest first
+          return KuuSurface(
             onTap: widget.onTap,
-          ),
-        );
-      },
+            child: Padding(
+              padding: const EdgeInsets.all(KuuSpacing.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      ChildAvatar(avatarId: p?.avatarId ?? '', size: 56),
+                      const SizedBox(width: KuuSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    p?.displayName ?? '…',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                if (widget.child.isDemo) ...[
+                                  const SizedBox(width: KuuSpacing.sm),
+                                  const KuuDemoBadge(),
+                                ],
+                              ],
+                            ),
+                            Text(
+                              '${widget.child.approximateAge()} años aprox.',
+                              style: muted,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: KuuSpacing.md),
+                  KuuActivityBars(sessions: sessions, height: 36),
+                  const SizedBox(height: KuuSpacing.md),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: KuuFigure(
+                          value: '${month.length}',
+                          label: 'Sesiones (30 d)',
+                        ),
+                      ),
+                      Expanded(
+                        child: KuuFigure(
+                          value: '$crises',
+                          label: 'Crisis (30 d)',
+                          highlight: crises > 0,
+                        ),
+                      ),
+                      Expanded(
+                        child: KuuFigure(
+                          value: last == null
+                              ? '—'
+                              : formatDate(last.startedAtMs).substring(0, 5),
+                          label: 'Última',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: KuuSpacing.md),
+                  KuuLastOutcome(
+                    outcome: last == null ? null : SessionOutcome.of(last),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.tutorName, required this.onRegister, required this.onJoin});
+  const _EmptyState({
+    required this.tutorName,
+    required this.onRegister,
+    required this.onJoin,
+  });
   final String tutorName;
   final VoidCallback onRegister;
   final VoidCallback onJoin;
@@ -217,9 +377,17 @@ class _EmptyState extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(Icons.diversity_1_rounded, size: 72, color: theme.colorScheme.primary),
+              Icon(
+                Icons.diversity_1_rounded,
+                size: 72,
+                color: theme.colorScheme.primary,
+              ),
               const SizedBox(height: KuuSpacing.md),
-              Text('Hola, $tutorName', textAlign: TextAlign.center, style: theme.textTheme.headlineSmall),
+              Text(
+                'Hola, $tutorName',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.headlineSmall,
+              ),
               const SizedBox(height: KuuSpacing.sm),
               const Text(
                 'Todavía no acompañas a ningún niño/a. Regístralo, o únete con el código '

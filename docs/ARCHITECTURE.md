@@ -80,7 +80,8 @@ Verificado contra el firmware oficial (`EmotiBit_FeatherWing/EmotiBitWiFi.cpp`, 
 ### Formato de una sesión grabada
 - `raw.csv`: líneas tal cual las envía el EmotiBit, compatibles con el **EmotiBit DataParser** oficial.
 - `sync.csv`: pares `host_epoch_ms,device_ms` (~1/s) para pasar el reloj del dispositivo (ms desde el encendido) a hora real.
-- `events.csv`: marcadores agregados durante la sesión.
+- `events.csv`: eventos marcados durante la sesión, con la hora del teléfono y la del dispositivo. Guarda el id de la conducta (`crisisStart`, `note:texto`); un error se corrige con una línea `undo:<id>`, sin borrar.
+- El documento de la sesión en Firestore guarda además el contexto (`context`: lugar, actividad, tipos de tutor presentes) y la lista de eventos (`events`), para verlos en vivo y filtrar el dataset.
 
 ## Firebase
 

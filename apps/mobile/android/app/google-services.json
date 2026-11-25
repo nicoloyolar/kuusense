@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "454795068134",
+    "project_id": "kuusense-test",
+    "storage_bucket": "kuusense-test.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:454795068134:android:157e5695a6ca7919f1b127",
+        "android_client_info": {
+          "package_name": "com.kuusense.kuusense_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZ8zTvrNjNA3JIm5ErH7fLn6gjGFvNKOg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

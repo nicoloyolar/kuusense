@@ -7,7 +7,7 @@ export PATH := $(if $(wildcard $(JAVA21)),$(JAVA21):,)$(PATH)
 # LAN IP of this computer (used by physical phones to reach the emulators).
 LAN_IP ?= $(shell ipconfig getifaddr en0 2>/dev/null)
 
-.PHONY: help setup emulators simulator tokens emotibit scan monitor record web mobile mobile-device test test-protocol test-apps test-rules e2e analyze
+.PHONY: help setup emulators simulator tokens emotibit scan monitor record web mobile mobile-device mobile-test web-test deploy-rules-test deploy-web-test staff demo-load demo-clear test test-protocol test-apps test-rules e2e analyze
 
 help:
 	@echo "make setup          Install all dependencies"
@@ -21,6 +21,13 @@ help:
 	@echo "make web            Run the researcher platform in Chrome"
 	@echo "make mobile         Run the tutor app (simulator/emulator)"
 	@echo "make mobile-device  Run the app on a physical phone (uses LAN_IP=$(LAN_IP))"
+	@echo "make mobile-test    Run the app against the real project kuusense-test"
+	@echo "make web-test       Run the web platform against kuusense-test"
+	@echo "make staff EMAIL=..  Give an account admin/researcher access (kuusense-test)"
+	@echo "make deploy-web-test  Publish the web platform to kuusense-test (Hosting)"
+	@echo "make demo-load        Load fictional demo data into kuusense-test"
+	@echo "make demo-clear       Remove all demo data from kuusense-test"
+	@echo "make deploy-rules-test  Publish security rules and indexes to kuusense-test"
 	@echo "make test           Run all automated tests"
 	@echo "make e2e            End-to-end tutor flow on a simulator (needs make emulators)"
 	@echo "make analyze        Static analysis of all Dart code"
@@ -61,6 +68,33 @@ mobile:
 
 mobile-device:
 	cd apps/mobile && flutter run --dart-define=EMULATOR_HOST=$(LAN_IP)
+
+# Real Firebase project kuusense-test (no emulators).
+mobile-test:
+	cd apps/mobile && flutter run --dart-define=USE_EMULATORS=false
+
+web-test:
+	cd apps/web && flutter run -d chrome --web-port 5050 --dart-define=USE_EMULATORS=false
+
+# Grant web-platform access: make staff EMAIL=a@b.cl [ROLE=researcher] [PASSWORD=x]
+staff:
+	cd firebase && node admin/set-staff.mjs --project kuusense-test --email $(EMAIL) --role $(or $(ROLE),admin) $(if $(PASSWORD),--password $(PASSWORD),)
+
+# Build the web platform against kuusense-test and publish it to Firebase Hosting.
+deploy-web-test:
+	cd apps/web && flutter build web --release --dart-define=USE_EMULATORS=false
+	firebase deploy --project test --only hosting
+
+# Fictional demo data in kuusense-test, linked to OWNER's account (default: the admin).
+demo-load:
+	cd firebase && node admin/demo-data.mjs --project kuusense-test --owner $(or $(OWNER),nicolas.iloyolar@gmail.com) --tutors $(or $(TUTORS),vale.lamilla@gmail.com)
+
+demo-clear:
+	cd firebase && node admin/demo-data.mjs --project kuusense-test --clear
+
+# Publish Firestore/Storage rules and indexes to kuusense-test.
+deploy-rules-test:
+	firebase deploy --project test --only firestore:rules,firestore:indexes,storage
 
 test: test-protocol test-apps test-rules
 

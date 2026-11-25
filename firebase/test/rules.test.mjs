@@ -275,6 +275,32 @@ describe('sessions', () => {
     await assertFails(updateDoc(sessionRef(alice()), { childId: C2 }));
     await assertFails(updateDoc(sessionRef(carol()), { status: 'uploaded' }));
   });
+  test('a session stores its context and marked events', async () => {
+    const context = { place: 'school', activity: 'classwork', present: ['teacher'] };
+    await assertSucceeds(setDoc(sessionRef(carol(), 's2'), session({ createdByUid: 'carol', context, events: [] })));
+    await assertSucceeds(updateDoc(sessionRef(alice()), {
+      events: arrayUnion({ atMs: 5, kind: 'crisisStart' }),
+      context: { place: 'home', activity: null, present: [] },
+    }));
+  });
+  test('context only accepts known kinds, without free text', async () => {
+    const bad = [
+      { place: 'Colegio San Juan' },
+      { activity: 'swimming' },
+      { present: ['grandma'] },
+      { place: 'home', childName: 'Ana' },
+    ];
+    for (const context of bad) {
+      await assertFails(setDoc(sessionRef(carol(), 's2'), session({ createdByUid: 'carol', context })));
+      await assertFails(updateDoc(sessionRef(alice()), { context }));
+    }
+  });
+  test('events must be a bounded list; only the recording phone writes them', async () => {
+    await assertFails(updateDoc(sessionRef(alice()), { events: 'crisis' }));
+    const tooMany = Array.from({ length: 1001 }, (_, i) => ({ atMs: i, kind: 'restless' }));
+    await assertFails(updateDoc(sessionRef(alice()), { events: tooMany }));
+    await assertFails(updateDoc(sessionRef(carol()), { events: arrayUnion({ atMs: 5, kind: 'calmed' }) }));
+  });
   test('linked tutors and staff read sessions; others cannot', async () => {
     await assertSucceeds(getDocs(collection(carol().firestore(), 'children', C1, 'sessions')));
     await assertSucceeds(getDocs(collection(dave().firestore(), 'children', C1, 'sessions')));

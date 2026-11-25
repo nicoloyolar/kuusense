@@ -143,6 +143,7 @@ Meta de calidad: al menos 90 % de datos válidos por sesión en la Fase 1 CORFO 
 8. **Datos personales:** el flujo de uso habla de "todos los datos personales" y de la foto del NNA. El concepto tecnológico promete seudonimización. ¿Qué datos personales son realmente necesarios?
 9. **Etiquetado:** ¿quiénes etiquetan los episodios y desde dónde (en vivo durante la sesión, o después con el video)?
 10. **Estrategias:** ¿existe un catálogo de estrategias por cuadrante de Dunn y emoción (textos e imágenes)? ¿Quién lo mantiene?
+11. **Conductas a marcar:** ¿qué conductas y eventos deben poder marcar los tutores durante una sesión? Hoy la app usa una lista provisoria (inquietud, se tapa los oídos, movimientos repetitivos, llanto, inicio y fin de crisis, se aplicó estrategia, se calmó, más una nota libre). ¿Y qué lugares y actividades conviene registrar como contexto?
 
 ## 8. Inconsistencias detectadas en el concepto tecnológico
 

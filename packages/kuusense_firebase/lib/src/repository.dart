@@ -216,6 +216,12 @@ class KuusenseRepository {
       .snapshots()
       .map((s) => s.docs.map((d) => RecordingSession.fromMap(d.id, d.data())).toList());
 
+  /// One session, live. Staff or linked tutors.
+  Stream<RecordingSession?> watchSession(String childId, String sessionId) => _sessions(childId)
+      .doc(sessionId)
+      .snapshots()
+      .map((d) => d.exists ? RecordingSession.fromMap(d.id, d.data()!) : null);
+
   Future<String> downloadUrl(String storagePath) => storage.ref(storagePath).getDownloadURL();
 
   // ------------------------------------------------------------ sessions
@@ -229,6 +235,7 @@ class KuusenseRepository {
     required String childId,
     required String deviceId,
     String appVersion = '',
+    SessionContext context = const SessionContext(),
   }) async {
     final ref = _sessions(childId).doc();
     final s = RecordingSession(
@@ -239,6 +246,7 @@ class KuusenseRepository {
       startedAtMs: _now,
       status: SessionStatus.recording,
       appVersion: appVersion,
+      context: context,
     );
     await ref.set(s.toMap());
     return s;
@@ -246,6 +254,17 @@ class KuusenseRepository {
 
   Future<void> pushLive(String childId, String sessionId, LiveSnapshot live) =>
       _sessions(childId).doc(sessionId).update({'live': live.toMap()});
+
+  /// Appends an event as soon as it is marked, so other tutors see it live.
+  Future<void> addSessionEvent(String childId, String sessionId, SessionEvent event) =>
+      _sessions(childId).doc(sessionId).update({
+        'events': FieldValue.arrayUnion([event.toMap()]),
+      });
+
+  Future<void> removeSessionEvent(String childId, String sessionId, SessionEvent event) =>
+      _sessions(childId).doc(sessionId).update({
+        'events': FieldValue.arrayRemove([event.toMap()]),
+      });
 
   Future<void> updateSession(String childId, String sessionId, Map<String, Object?> fields) =>
       _sessions(childId).doc(sessionId).update(fields);
