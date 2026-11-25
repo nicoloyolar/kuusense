@@ -5,20 +5,20 @@
 import 'dart:ui';
 
 abstract final class KuuColor {
-  static const brandPrimary = Color(0xFF2B2F8F);
-  static const brandSecondary = Color(0xFF22C3D6);
-  static const brandAccent = Color(0xFFB79CEB);
-  static const brandHighlight = Color(0xFFF7B6CF);
-  static const lightBackground = Color(0xFFF5F2FC);
+  static const brandPrimary = Color(0xFF15448C);
+  static const brandSecondary = Color(0xFF1BAE7B);
+  static const brandAccent = Color(0xFF2B5DA6);
+  static const brandHighlight = Color(0xFF2884BC);
+  static const lightBackground = Color(0xFFF4F7FB);
   static const lightSurface = Color(0xFFFFFFFF);
-  static const lightOnSurface = Color(0xFF1F1D3D);
-  static const lightMuted = Color(0xFF6E6A8C);
-  static const lightOutline = Color(0xFFD8D2EE);
-  static const darkBackground = Color(0xFF14132B);
-  static const darkSurface = Color(0xFF1E1D3A);
-  static const darkOnSurface = Color(0xFFECEAF7);
-  static const darkMuted = Color(0xFFA6A2C4);
-  static const darkOutline = Color(0xFF3A3862);
+  static const lightOnSurface = Color(0xFF14233D);
+  static const lightMuted = Color(0xFF5B6B84);
+  static const lightOutline = Color(0xFFD5DEEB);
+  static const darkBackground = Color(0xFF0D1828);
+  static const darkSurface = Color(0xFF152338);
+  static const darkOnSurface = Color(0xFFE8EEF7);
+  static const darkMuted = Color(0xFF9AABC4);
+  static const darkOutline = Color(0xFF2B3D59);
   static const stateStable = Color(0xFF3BB273);
   static const stateAlert = Color(0xFFF2B93B);
   static const statePreCrisis = Color(0xFFE5484D);

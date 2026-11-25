@@ -1,11 +1,11 @@
 {
-    "name": "kuusense_web",
-    "short_name": "kuusense_web",
+    "name": "KúuSense · Plataforma",
+    "short_name": "KúuSense",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F4F7FB",
+    "theme_color": "#15448C",
+    "description": "Plataforma KúuSense para investigadores y administradores.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

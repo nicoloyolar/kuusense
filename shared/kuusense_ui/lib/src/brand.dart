@@ -7,10 +7,14 @@ import 'generated/tokens.g.dart';
 abstract final class KuuAssets {
   static const package = 'kuusense_ui';
 
-  /// Full logo (mascot + wordmark), transparent PNG.
+  /// Full logo (symbol + wordmark), transparent PNG.
+  /// PROVISIONAL: extracted from a low-res image; replace with the official file.
   static const logo = 'assets/brand/logo.png';
 
-  /// Mascot / symbol only, square, transparent PNG.
+  /// Full logo for dark backgrounds (light wordmark).
+  static const logoDark = 'assets/brand/logo_dark.png';
+
+  /// Symbol only, square, transparent PNG.
   static const symbol = 'assets/brand/symbol.png';
 }
 
@@ -24,11 +28,15 @@ class KuusenseLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final asset = symbolOnly
+        ? KuuAssets.symbol
+        : (isDark ? KuuAssets.logoDark : KuuAssets.logo);
     return Semantics(
       label: 'KúuSense',
       image: true,
       child: Image.asset(
-        symbolOnly ? KuuAssets.symbol : KuuAssets.logo,
+        asset,
         package: KuuAssets.package,
         height: height,
         fit: BoxFit.contain,
@@ -69,8 +77,8 @@ class _Wordmark extends StatelessWidget {
   }
 }
 
-/// Soft lilac/turquoise backdrop used on welcome and auth screens
-/// (matches the mockups). Falls back to the theme background in dark mode.
+/// Soft blue/green backdrop used on welcome and auth screens, taken from the
+/// logo palette. Falls back to the theme background in dark mode.
 class KuuBrandBackground extends StatelessWidget {
   const KuuBrandBackground({super.key, required this.child});
   final Widget child;
@@ -86,9 +94,9 @@ class KuuBrandBackground extends StatelessWidget {
           colors: isDark
               ? const [KuuColor.darkBackground, KuuColor.darkSurface]
               : [
-                  KuuColor.lightBackground,
-                  KuuColor.brandAccent.withValues(alpha: 0.35),
-                  KuuColor.brandSecondary.withValues(alpha: 0.18),
+                  KuuColor.lightSurface,
+                  KuuColor.brandHighlight.withValues(alpha: 0.12),
+                  KuuColor.brandSecondary.withValues(alpha: 0.12),
                 ],
         ),
       ),

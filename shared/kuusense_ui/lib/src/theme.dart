@@ -67,13 +67,13 @@ abstract final class KuuTheme {
     final isDark = brightness == Brightness.dark;
     final scheme = ColorScheme(
       brightness: brightness,
-      // In dark mode the navy primary lacks contrast; the turquoise leads.
+      // In dark mode the navy primary lacks contrast; the logo green leads.
       primary: isDark ? KuuColor.brandSecondary : KuuColor.brandPrimary,
       onPrimary: isDark ? KuuColor.darkBackground : Colors.white,
-      secondary: isDark ? KuuColor.brandAccent : KuuColor.brandSecondary,
+      secondary: isDark ? KuuColor.brandHighlight : KuuColor.brandSecondary,
       onSecondary: KuuColor.lightOnSurface,
       tertiary: KuuColor.brandHighlight,
-      onTertiary: KuuColor.lightOnSurface,
+      onTertiary: Colors.white,
       error: KuuColor.feedbackError,
       onError: Colors.white,
       surface: surface,

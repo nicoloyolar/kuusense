@@ -41,7 +41,7 @@ class SessionScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text('PPG (infrarrojo)', style: theme.textTheme.labelLarge),
-          Sparkline(values: c.traces[TypeTag.ppgInfrared]!, color: Colors.redAccent),
+          Sparkline(values: c.traces[TypeTag.ppgInfrared]!, color: theme.colorScheme.secondary),
           const SizedBox(height: 12),
           Text('EDA', style: theme.textTheme.labelLarge),
           Sparkline(values: c.traces[TypeTag.eda]!, color: theme.colorScheme.primary),
@@ -120,7 +120,7 @@ class _RecordingPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(children: [
-            const Icon(Icons.fiber_manual_record, color: Colors.red),
+            Icon(Icons.fiber_manual_record, color: theme.colorScheme.error),
             const SizedBox(width: 6),
             Text('Grabando  $clock', style: theme.textTheme.titleMedium),
           ]),
