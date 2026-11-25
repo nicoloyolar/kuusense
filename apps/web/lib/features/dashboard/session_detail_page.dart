@@ -5,9 +5,10 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../common/page_title.dart';
 import 'dash_page.dart';
+import 'signals_card.dart';
 
-/// One session: header with outcome, key figures, marked events on a
-/// timeline, context and raw files. Updates live while still recording.
+/// One session: header with outcome, key figures, signal charts, marked
+/// events on a timeline, context and raw files. Updates live while still recording.
 class SessionDetailPage extends StatefulWidget {
   const SessionDetailPage({
     super.key,
@@ -70,6 +71,10 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                     const SizedBox(height: KuuSpacing.lg),
                     _Figures(session: s),
                     const SizedBox(height: KuuSpacing.lg),
+                    if (SignalsCard.hasContent(s)) ...[
+                      SignalsCard(repo: widget.repo, session: s),
+                      const SizedBox(height: KuuSpacing.lg),
+                    ],
                     if (wide)
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -434,6 +439,7 @@ class _Files extends StatelessWidget {
     'raw.csv': 'Señales del EmotiBit (formato de la tarjeta SD)',
     'sync.csv': 'Sincronización de relojes teléfono–dispositivo',
     'events.csv': 'Eventos con la hora del dispositivo',
+    'signals.csv': 'Resumen por segundo (para gráficos)',
   };
 
   Future<void> _download(BuildContext context, String path) async {

@@ -295,6 +295,16 @@ describe('sessions', () => {
       await assertFails(updateDoc(sessionRef(alice()), { context }));
     }
   });
+  test('the recording phone stores session figures; only known keys', async () => {
+    const stats = {
+      heartRate: { min: 54, mean: 65, max: 80 }, eda: { min: 2.7, mean: 6, max: 35 }, temperature: null,
+      scrCount: 18, lossPercent: 0.8, batteryStart: 88, batteryEnd: 81,
+    };
+    await assertSucceeds(updateDoc(sessionRef(alice()), { stats }));
+    await assertFails(updateDoc(sessionRef(alice()), { stats: 'ok' }));
+    await assertFails(updateDoc(sessionRef(alice()), { stats: { ...stats, childName: 'Ana' } }));
+    await assertFails(updateDoc(sessionRef(carol()), { stats }));
+  });
   test('events must be a bounded list; only the recording phone writes them', async () => {
     await assertFails(updateDoc(sessionRef(alice()), { events: 'crisis' }));
     const tooMany = Array.from({ length: 1001 }, (_, i) => ({ atMs: i, kind: 'restless' }));
@@ -320,6 +330,9 @@ describe('storage', () => {
 
   test('the recording tutor uploads raw.csv', async () => {
     await assertSucceeds(uploadString(ref(alice().storage(), `${path}/raw.csv`), '1,1,1,EA,1,100,2.0\n'));
+  });
+  test('the recording tutor uploads the per-second summary', async () => {
+    await assertSucceeds(uploadString(ref(alice().storage(), `${path}/signals.csv`), 'host_epoch_ms,heart_rate\n'));
   });
   test('other tutors and other file names are rejected', async () => {
     await assertFails(uploadString(ref(carol().storage(), `${path}/raw.csv`), 'x'));

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -223,6 +225,15 @@ class KuusenseRepository {
       .map((d) => d.exists ? RecordingSession.fromMap(d.id, d.data()!) : null);
 
   Future<String> downloadUrl(String storagePath) => storage.ref(storagePath).getDownloadURL();
+
+  /// Per-second signal summary of a session (staff only, like every session
+  /// file). Empty when the session has no `signals.csv`.
+  Future<List<SignalPoint>> loadSignals(RecordingSession session) async {
+    final path = session.files[StoragePaths.signalsFile];
+    if (path == null) return const [];
+    final bytes = await storage.ref(path).getData(20 * 1024 * 1024);
+    return bytes == null ? const [] : parseSignalsCsv(utf8.decode(bytes));
+  }
 
   // ------------------------------------------------------------ sessions
 

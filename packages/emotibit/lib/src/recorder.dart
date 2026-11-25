@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'packet.dart';
+import 'preview.dart';
 import 'type_tags.dart';
 
 /// Writes a session to disk while it streams.
@@ -12,6 +13,8 @@ import 'type_tags.dart';
 /// - `sync.csv`: `host_epoch_ms,device_ms` pairs (~1/s) to map the device clock
 ///   (ms since boot) to wall-clock time.
 /// - `events.csv`: `host_epoch_ms,device_ms,label` for markers added in the app.
+/// - `signals.csv`: per-second summary for dashboards, written on [stop]
+///   (see [SignalPreviewBuilder]); [preview] also gives the session figures.
 class SessionRecorder {
   SessionRecorder._(this.directory, this._raw, this._sync, this._events);
 
@@ -23,13 +26,15 @@ class SessionRecorder {
   int _lastDeviceMs = 0;
   int packetCount = 0;
   final Set<String> tagsSeen = {};
+  final SignalPreviewBuilder preview = SignalPreviewBuilder();
   DateTime? startedAt;
   DateTime? endedAt;
 
   File get rawFile => File('${directory.path}/raw.csv');
   File get syncFile => File('${directory.path}/sync.csv');
   File get eventsFile => File('${directory.path}/events.csv');
-  List<File> get files => [rawFile, syncFile, eventsFile];
+  File get signalsFile => File('${directory.path}/signals.csv');
+  List<File> get files => [rawFile, syncFile, eventsFile, signalsFile];
 
   static Future<SessionRecorder> start(Directory directory) async {
     await directory.create(recursive: true);
@@ -52,6 +57,7 @@ class SessionRecorder {
       tagsSeen.add(p.typeTag);
     }
     final now = DateTime.now().millisecondsSinceEpoch;
+    preview.add(p, now);
     if (now - _lastSyncHostMs >= 1000) {
       _sync.writeln('$now,${p.timestamp}');
       _lastSyncHostMs = now;
@@ -68,6 +74,7 @@ class SessionRecorder {
     if (endedAt != null) return;
     endedAt = DateTime.now();
     await Future.wait([_raw.close(), _sync.close(), _events.close()]);
+    await signalsFile.writeAsString(preview.toCsv());
   }
 
   Duration get duration => (endedAt ?? DateTime.now()).difference(startedAt!);

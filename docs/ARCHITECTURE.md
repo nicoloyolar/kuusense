@@ -81,13 +81,16 @@ Verificado contra el firmware oficial (`EmotiBit_FeatherWing/EmotiBitWiFi.cpp`, 
 - `raw.csv`: líneas tal cual las envía el EmotiBit, compatibles con el **EmotiBit DataParser** oficial.
 - `sync.csv`: pares `host_epoch_ms,device_ms` (~1/s) para pasar el reloj del dispositivo (ms desde el encendido) a hora real.
 - `events.csv`: eventos marcados durante la sesión, con la hora del teléfono y la del dispositivo. Guarda el id de la conducta (`crisisStart`, `note:texto`); un error se corrige con una línea `undo:<id>`, sin borrar.
+- `signals.csv`: resumen de un valor por segundo (frecuencia cardíaca, EDA, temperatura de la piel, intensidad de movimiento y batería) para los gráficos de la web. Lo genera el grabador al terminar, o `emotibit preview <carpeta>` para una grabación existente. Las cifras de toda la sesión (rango de cada señal, respuestas de EDA, pérdida de paquetes y batería) van en el campo `stats` de la sesión en Firestore.
 - El documento de la sesión en Firestore guarda además el contexto (`context`: lugar, actividad, tipos de tutor presentes) y la lista de eventos (`events`), para verlos en vivo y filtrar el dataset.
 
 ## Firebase
 
 - **Auth:** correo y contraseña. Sin acceso anónimo.
 - **Firestore:** solo metadatos y valores resumidos. **Nunca** se guardan muestras de alta frecuencia.
-- **Storage:** archivos de las sesiones en `children/{childId}/sessions/{sessionId}/` (`raw.csv`, `sync.csv`, `events.csv`).
+- **Storage:** archivos de las sesiones en `children/{childId}/sessions/{sessionId}/` (`raw.csv`, `sync.csv`, `events.csv`, `signals.csv`). CORS de solo lectura (GET) para la web publicada y `localhost:5050`, definido en `firebase/storage-cors.json` y aplicado con `gcloud storage buckets update --cors-file`.
+- **Permiso necesario en cada proyecto real:** las reglas de Storage consultan Firestore (¿es staff?, ¿quién grabó la sesión?), así que el agente de servicio de Storage (`service-<número>@gcp-sa-firebasestorage.iam.gserviceaccount.com`) necesita el rol `roles/firebaserules.firestoreServiceAgent`. Publicando las reglas desde la terminal no se otorga solo; sin él, nadie puede leer ni subir archivos de sesiones. Ya está otorgado en `kuusense-test`.
+- **Importar una grabación de la terminal:** `make import-session DIR=recordings/<fecha> CHILD=<childId>` la sube a `kuusense-test` como si la hubiera subido la app.
 - **Reglas** con tests automáticos en `firebase/test/`.
 - Desarrollo local con emuladores (proyecto `demo-kuusense`), sin un proyecto real.
 

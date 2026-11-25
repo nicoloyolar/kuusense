@@ -156,11 +156,18 @@ service cloud.firestore {
         function validEvents(d) {
           return !('events' in d) || (d.events is list && d.events.size() <= 1000);
         }
+        // Whole-session figures (SessionStats): numbers only, fixed keys.
+        function validStats(d) {
+          return !('stats' in d) || d.stats == null || (
+            d.stats is map
+            && d.stats.keys().hasOnly(['heartRate', 'eda', 'temperature', 'scrCount',
+                                       'lossPercent', 'batteryStart', 'batteryEnd']));
+        }
         function validNewSession(d) {
           return d.keys().hasOnly(['childId', 'deviceId', 'createdByUid', 'startedAtMs', 'endedAtMs',
                                    'status', 'packetCount', 'streams', 'files', 'live', 'appVersion',
-                                   'context', 'events'])
-            && validContext(d) && validEvents(d)
+                                   'context', 'events', 'stats'])
+            && validContext(d) && validEvents(d) && validStats(d)
             && d.childId == childId
             && d.createdByUid == request.auth.uid
             && d.status == 'recording'
@@ -175,8 +182,9 @@ service cloud.firestore {
           && resource.data.createdByUid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['live', 'status', 'endedAtMs', 'packetCount', 'streams', 'files',
-                         'context', 'events'])
+                         'context', 'events', 'stats'])
           && validContext(request.resource.data) && validEvents(request.resource.data)
+          && validStats(request.resource.data)
           && request.resource.data.status in ['recording', 'uploading', 'uploaded', 'failed'];
         // Research data: deletion goes through admin tooling (retention policy).
         allow delete: if false;

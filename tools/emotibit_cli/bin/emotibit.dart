@@ -15,6 +15,7 @@ Future<void> main(List<String> args) async {
     ..addCommand(MonitorCommand())
     ..addCommand(RecordCommand())
     ..addCommand(AnalyzeCommand())
+    ..addCommand(PreviewCommand())
     ..addCommand(SimulateCommand());
   try {
     await runner.run(args);
@@ -80,7 +81,7 @@ class MonitorCommand extends Command<void> {
   MonitorCommand() {
     _addDiscoveryOptions(this);
     argParser
-      ..addOption('record', help: 'Carpeta donde grabar la sesión (raw.csv, sync.csv, events.csv, resumen.txt).')
+      ..addOption('record', help: 'Carpeta donde grabar la sesión (raw.csv, sync.csv, events.csv, signals.csv, stats.json, resumen.txt).')
       ..addOption('seconds', help: 'Detenerse después de N segundos (por defecto: hasta Ctrl+C).')
       ..addOption('refresh', defaultsTo: '2', help: 'Segundos entre actualizaciones de la tabla.');
   }
@@ -166,6 +167,7 @@ class MonitorCommand extends Command<void> {
       ..writeln(stats.toTable());
     if (recorder != null) {
       await recorder.stop();
+      await _writeStatsJson(recorder.directory.path, recorder.preview);
       final summary = File('${recorder.directory.path}/resumen.txt');
       await summary.writeAsString('EmotiBit ${device.deviceId} (${device.address.address})\n'
           'Inicio: ${recorder.startedAt}\nFin: ${recorder.endedAt}\n\n${stats.toTable()}\n');
@@ -218,6 +220,40 @@ class AnalyzeCommand extends Command<void> {
     stdout
       ..writeln('${file.path}: $lines líneas, $malformed no reconocidas')
       ..writeln(stats.toTable());
+  }
+}
+
+// ---------------------------------------------------------------- preview
+
+/// Session figures for `make import-session` (keys match `SessionStats`).
+Future<void> _writeStatsJson(String dir, SignalPreviewBuilder preview) =>
+    File('$dir/stats.json').writeAsString(const JsonEncoder.withIndent('  ').convert(preview.statsJson()));
+
+class PreviewCommand extends Command<void> {
+  @override
+  String get name => 'preview';
+  @override
+  String get description =>
+      'Genera signals.csv (resumen por segundo) y stats.json de una grabación ya hecha.';
+  @override
+  String get invocation => 'emotibit preview <carpeta de la grabación>';
+
+  @override
+  Future<void> run() async {
+    final rest = argResults!.rest;
+    if (rest.isEmpty) usageException('Falta la carpeta de la grabación.');
+    final dir = rest.first;
+    final raw = File('$dir/raw.csv');
+    final sync = File('$dir/sync.csv');
+    if (!raw.existsSync() || !sync.existsSync()) {
+      throw EmotiBitException('La carpeta debe tener raw.csv y sync.csv: $dir');
+    }
+    final preview = SignalPreviewBuilder.fromRecording(await raw.readAsString(), await sync.readAsString());
+    await File('$dir/signals.csv').writeAsString(preview.toCsv());
+    await _writeStatsJson(dir, preview);
+    stdout
+      ..writeln('Escrito $dir/signals.csv y $dir/stats.json')
+      ..writeln(const JsonEncoder.withIndent('  ').convert(preview.statsJson()));
   }
 }
 

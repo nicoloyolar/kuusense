@@ -23,6 +23,9 @@ abstract final class Collections {
 abstract final class StoragePaths {
   static String sessionDir(String childId, String sessionId) =>
       'children/$childId/sessions/$sessionId';
+
+  /// Per-second summary uploaded with each session (see [parseSignalsCsv]).
+  static const signalsFile = 'signals.csv';
 }
 
 int _ms(Object? v) => (v as num?)?.toInt() ?? 0;
@@ -439,6 +442,7 @@ class RecordingSession {
     this.appVersion = '',
     this.context = const SessionContext(),
     this.events = const [],
+    this.stats,
   });
 
   final String id;
@@ -463,6 +467,9 @@ class RecordingSession {
 
   /// Behaviors and notes marked during the session, in order.
   final List<SessionEvent> events;
+
+  /// Whole-session figures, written with the files at upload time.
+  final SessionStats? stats;
 
   /// Belongs to a fictional demo child.
   bool get isDemo => childId.startsWith(Child.demoIdPrefix);
@@ -492,6 +499,9 @@ class RecordingSession {
           for (final e in (m['events'] as List? ?? const []))
             SessionEvent.fromMap(Map<String, dynamic>.from(e as Map)),
         ],
+        stats: m['stats'] == null
+            ? null
+            : SessionStats.fromMap(Map<String, dynamic>.from(m['stats'] as Map)),
       );
 
   Map<String, dynamic> toMap() => {
@@ -508,5 +518,103 @@ class RecordingSession {
         'appVersion': appVersion,
         'context': context.toMap(),
         'events': [for (final e in events) e.toMap()],
+        if (stats != null) 'stats': stats!.toMap(),
       };
+}
+
+/// Min, mean and max of one signal over a session.
+class SignalRange {
+  const SignalRange({required this.min, required this.mean, required this.max});
+  final double min, mean, max;
+
+  static SignalRange? fromMap(Object? m) {
+    if (m is! Map) return null;
+    double v(String k) => (m[k] as num?)?.toDouble() ?? 0;
+    return SignalRange(min: v('min'), mean: v('mean'), max: v('max'));
+  }
+
+  Map<String, double> toMap() => {'min': min, 'mean': mean, 'max': max};
+}
+
+/// Whole-session figures computed by the recorder (packages/emotibit
+/// `SignalPreviewBuilder.statsJson`, same keys).
+class SessionStats {
+  const SessionStats({
+    this.heartRate,
+    this.eda,
+    this.temperature,
+    this.scrCount = 0,
+    this.lossPercent = 0,
+    this.batteryStart,
+    this.batteryEnd,
+  });
+
+  final SignalRange? heartRate;
+  final SignalRange? eda;
+  final SignalRange? temperature;
+
+  /// Skin-conductance responses detected by the device.
+  final int scrCount;
+
+  /// Packets numbered by the device that never arrived, in percent.
+  final double lossPercent;
+  final double? batteryStart;
+  final double? batteryEnd;
+
+  factory SessionStats.fromMap(Map<String, dynamic> m) => SessionStats(
+        heartRate: SignalRange.fromMap(m['heartRate']),
+        eda: SignalRange.fromMap(m['eda']),
+        temperature: SignalRange.fromMap(m['temperature']),
+        scrCount: _ms(m['scrCount']),
+        lossPercent: (m['lossPercent'] as num?)?.toDouble() ?? 0,
+        batteryStart: (m['batteryStart'] as num?)?.toDouble(),
+        batteryEnd: (m['batteryEnd'] as num?)?.toDouble(),
+      );
+
+  Map<String, dynamic> toMap() => {
+        'heartRate': heartRate?.toMap(),
+        'eda': eda?.toMap(),
+        'temperature': temperature?.toMap(),
+        'scrCount': scrCount,
+        'lossPercent': lossPercent,
+        'batteryStart': batteryStart,
+        'batteryEnd': batteryEnd,
+      };
+}
+
+/// One row of `signals.csv`, the per-second summary of a session.
+class SignalPoint {
+  const SignalPoint({
+    required this.atMs,
+    this.heartRate,
+    this.eda,
+    this.temperature,
+    this.motion,
+    this.battery,
+  });
+
+  final int atMs;
+  final double? heartRate, eda, temperature, motion, battery;
+}
+
+/// Parses `signals.csv` (header
+/// `host_epoch_ms,heart_rate,eda,temperature,motion,battery`, empty = no data).
+List<SignalPoint> parseSignalsCsv(String csv) {
+  final out = <SignalPoint>[];
+  for (final line in csv.split('\n').skip(1)) {
+    final p = line.trim().split(',');
+    if (p.length < 6) continue;
+    final at = int.tryParse(p[0]);
+    if (at == null) continue;
+    double? d(String s) => s.isEmpty ? null : double.tryParse(s);
+    out.add(SignalPoint(
+      atMs: at,
+      heartRate: d(p[1]),
+      eda: d(p[2]),
+      temperature: d(p[3]),
+      motion: d(p[4]),
+      battery: d(p[5]),
+    ));
+  }
+  return out;
 }

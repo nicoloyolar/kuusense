@@ -13,7 +13,7 @@ service firebase.storage {
       // Only the tutor whose phone recorded the session uploads its files.
       allow create, update: if request.auth != null
         && session().createdByUid == request.auth.uid
-        && file.matches('(raw|sync|events)\\.csv')
+        && file.matches('(raw|sync|events|signals)\\.csv')
         && request.resource.size < 500 * 1024 * 1024;
 
       // Raw physiological data is for the research team only.

@@ -222,6 +222,7 @@ class RecordingController extends ChangeNotifier {
         'endedAtMs': rec.endedAt!.millisecondsSinceEpoch,
         'packetCount': rec.packetCount,
         'streams': rec.tagsSeen.toList()..sort(),
+        'stats': rec.preview.statsJson(),
         // Full list again, in case a live event write was lost offline.
         'events': [for (final e in events) e.toMap()],
       });

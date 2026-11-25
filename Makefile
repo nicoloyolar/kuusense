@@ -27,6 +27,7 @@ help:
 	@echo "make deploy-web-test  Publish the web platform to kuusense-test (Hosting)"
 	@echo "make demo-load        Load fictional demo data into kuusense-test"
 	@echo "make demo-clear       Remove all demo data from kuusense-test"
+	@echo "make import-session DIR=.. (CHILD=id | NAME=.. BIRTH_YEAR=..)  Upload a terminal recording to kuusense-test"
 	@echo "make deploy-rules-test  Publish security rules and indexes to kuusense-test"
 	@echo "make test           Run all automated tests"
 	@echo "make e2e            End-to-end tutor flow on a simulator (needs make emulators)"
@@ -91,6 +92,13 @@ demo-load:
 
 demo-clear:
 	cd firebase && node admin/demo-data.mjs --project kuusense-test --clear
+
+# Upload a recording made with `make record` to kuusense-test, as the app would.
+# Existing child: make import-session DIR=recordings/<fecha> CHILD=<childId>
+# New test child: make import-session DIR=recordings/<fecha> NAME="Prueba" BIRTH_YEAR=1995 [OWNER=correo]
+import-session:
+	$(EMOTIBIT) preview $(abspath $(DIR))
+	cd firebase && node admin/import-session.mjs --project kuusense-test --dir $(abspath $(DIR)) $(if $(CHILD),--child $(CHILD),--owner $(or $(OWNER),nicolas.iloyolar@gmail.com) --name "$(NAME)" --birth-year $(BIRTH_YEAR))
 
 # Publish Firestore/Storage rules and indexes to kuusense-test.
 deploy-rules-test:

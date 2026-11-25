@@ -44,4 +44,29 @@ void main() {
     expect(i.isExpired(DateTime.fromMillisecondsSinceEpoch(999)), isFalse);
     expect(i.isExpired(DateTime.fromMillisecondsSinceEpoch(1000)), isTrue);
   });
+
+  test('session figures and signals.csv round-trip', () {
+    const stats = SessionStats(
+      heartRate: SignalRange(min: 54, mean: 65.2, max: 80),
+      scrCount: 18,
+      lossPercent: 0.8,
+      batteryStart: 88,
+      batteryEnd: 81,
+    );
+    final s = RecordingSession.fromMap('s', {'status': 'uploaded', 'stats': stats.toMap()});
+    expect(s.stats!.heartRate!.mean, 65.2);
+    expect(s.stats!.eda, isNull);
+    expect(s.stats!.scrCount, 18);
+    expect(RecordingSession.fromMap('s', {}).stats, isNull);
+
+    final points = parseSignalsCsv(
+      'host_epoch_ms,heart_rate,eda,temperature,motion,battery\n'
+      '1000,60.0,3.0000,32.00,0.1000,90\n'
+      '2000,,6.0000,,,\n',
+    );
+    expect(points, hasLength(2));
+    expect(points.first.heartRate, 60.0);
+    expect(points.last.heartRate, isNull);
+    expect(points.last.eda, 6.0);
+  });
 }

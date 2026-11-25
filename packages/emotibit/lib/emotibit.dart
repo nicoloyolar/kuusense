@@ -7,3 +7,4 @@ export 'src/recorder.dart';
 export 'src/simulator.dart';
 export 'src/stats.dart';
 export 'src/type_tags.dart';
+export 'src/preview.dart';
