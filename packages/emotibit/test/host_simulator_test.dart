@@ -50,4 +50,24 @@ void main() {
     expect(sim.isConnected, isFalse);
     await dir.delete(recursive: true);
   });
+
+  test('a device that stops sending data is reported as disconnected', () async {
+    final found = await EmotiBitHost.discover(
+      targets: [InternetAddress.loopbackIPv4],
+      advertisingPort: port,
+      timeout: const Duration(milliseconds: 600),
+    );
+    final conn = await EmotiBitHost.connect(
+      found.single,
+      dataTimeout: const Duration(seconds: 1),
+    );
+    await conn.packets.first; // streaming
+    final lost = conn.statusChanges
+        .firstWhere((s) => s == EmotiBitConnectionStatus.disconnected);
+    final pausedAt = DateTime.now();
+    sim.pauseStreaming(); // control channel and PONGs stay alive
+    await lost.timeout(const Duration(seconds: 4));
+    expect(DateTime.now().difference(pausedAt), lessThan(const Duration(seconds: 3)));
+    expect(conn.status, EmotiBitConnectionStatus.disconnected);
+  });
 }

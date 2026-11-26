@@ -46,6 +46,8 @@ dependencies:
   firebase_storage: ^14.1.0
 
   firebase_core: any
+  flutter_foreground_task: ^11.0.3
+  wakelock_plus: ^1.8.2
 dev_dependencies:
   integration_test:
     sdk: flutter

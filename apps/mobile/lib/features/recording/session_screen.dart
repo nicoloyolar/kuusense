@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:emotibit/emotibit.dart';
 import 'package:flutter/material.dart';
 import 'package:kuusense_firebase/kuusense_firebase.dart';
@@ -22,6 +24,19 @@ class SessionScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text(c.connection?.device.deviceId ?? 'EmotiBit'),
         actions: [
+          // iPhone keeps the screen on while recording; a black screen
+          // saves battery and avoids accidental taps.
+          if (c.isRecording && Platform.isIOS)
+            IconButton(
+              onPressed: () => Navigator.of(context).push(
+                PageRouteBuilder<void>(
+                  opaque: true,
+                  pageBuilder: (_, _, _) => _DimmedScreen(controller: c),
+                ),
+              ),
+              icon: const Icon(Icons.dark_mode_outlined),
+              tooltip: 'Oscurecer pantalla',
+            ),
           if (!c.isRecording)
             IconButton(
               onPressed: c.disconnect,
@@ -33,6 +48,18 @@ class SessionScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (c.isReconnecting) ...[
+            _ReconnectingBanner(controller: c),
+            const SizedBox(height: KuuSpacing.md),
+          ],
+          if (c.isRecording && Platform.isIOS && !c.isReconnecting) ...[
+            Text(
+              'En iPhone, deja la app abierta mientras grabas. '
+              'La pantalla se mantiene encendida; puedes oscurecerla con el botón de la luna.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: KuuSpacing.md),
+          ],
           GridView.count(
             crossAxisCount: 2,
             shrinkWrap: true,
@@ -273,7 +300,8 @@ class _RecordingPanel extends StatelessWidget {
           UploadState.failed => ListTile(
             leading: Icon(Icons.error, color: theme.colorScheme.error),
             title: const Text(
-              'Error al subir; los datos siguen en el teléfono',
+              'No se pudo subir. Los datos siguen en el teléfono y se '
+              'reintentará solo.',
             ),
             subtitle: Text(c.uploadError ?? ''),
             trailing: TextButton(
@@ -291,6 +319,71 @@ class _RecordingPanel extends StatelessWidget {
           label: const Text('Iniciar grabación'),
         ),
       ],
+    );
+  }
+}
+
+class _ReconnectingBanner extends StatelessWidget {
+  const _ReconnectingBanner({required this.controller});
+  final RecordingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      color: theme.colorScheme.errorContainer,
+      child: ListTile(
+        leading: const SizedBox.square(
+          dimension: 22,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        title: Text(
+          'Reconectando con el EmotiBit…',
+          style: TextStyle(color: theme.colorScheme.onErrorContainer),
+        ),
+        subtitle: Text(
+          'La grabación sigue. Revisa que el EmotiBit esté encendido y cerca '
+          'del WiFi. Se cerrará en ${_clock(controller.reconnectTimeLeft)} si no vuelve.',
+          style: TextStyle(color: theme.colorScheme.onErrorContainer),
+        ),
+      ),
+    );
+  }
+}
+
+/// Black screen shown on iPhone during a recording; tap to go back.
+class _DimmedScreen extends StatelessWidget {
+  const _DimmedScreen({required this.controller});
+  final RecordingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context).pop(),
+      child: ColoredBox(
+        color: Theme.of(context).colorScheme.scrim,
+        child: Center(
+          child: ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) {
+              if (!controller.isRecording) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (context.mounted) Navigator.of(context).maybePop();
+                });
+              }
+              return Text(
+                controller.isReconnecting
+                    ? 'Reconectando…  toca para volver'
+                    : 'Grabando ${_clock(controller.elapsed)}  ·  toca para volver',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 }

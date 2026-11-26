@@ -22,6 +22,13 @@ class _SignedInRootState extends State<SignedInRoot> {
   late final Stream<Tutor?> _tutor = repo.watchMyTutorProfile();
 
   @override
+  void initState() {
+    super.initState();
+    // Recover and upload sessions left on the phone (no internet, app closed).
+    recording.startUploads();
+  }
+
+  @override
   void dispose() {
     recording.dispose();
     super.dispose();

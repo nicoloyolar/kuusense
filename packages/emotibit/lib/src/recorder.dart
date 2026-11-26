@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'packet.dart';
@@ -34,7 +35,67 @@ class SessionRecorder {
   File get syncFile => File('${directory.path}/sync.csv');
   File get eventsFile => File('${directory.path}/events.csv');
   File get signalsFile => File('${directory.path}/signals.csv');
-  List<File> get files => [rawFile, syncFile, eventsFile, signalsFile];
+  List<File> get files => filesIn(directory);
+
+  /// The files of a session folder, in upload order.
+  static List<File> filesIn(Directory d) => [
+        for (final name in ['raw.csv', 'sync.csv', 'events.csv', 'signals.csv'])
+          File('${d.path}/$name'),
+      ];
+
+  /// Closes a recording that was left open (the app was killed mid-session):
+  /// drops a half-written last line from `raw.csv` so it stays valid for the
+  /// DataParser, then rebuilds `signals.csv` from `raw.csv` and `sync.csv`.
+  /// Returns null if the folder has no `raw.csv`.
+  static Future<RecoveredRecording?> recover(Directory directory) async {
+    final raw = File('${directory.path}/raw.csv');
+    if (!await raw.exists()) return null;
+    final bytes = await raw.readAsBytes();
+    var end = bytes.length;
+    while (end > 0 && bytes[end - 1] != 0x0A) {
+      end--;
+    }
+    if (end != bytes.length) {
+      final f = await raw.open(mode: FileMode.append);
+      await f.truncate(end);
+      await f.close();
+    }
+    final rawText = utf8.decode(bytes.sublist(0, end), allowMalformed: true);
+    final syncFile = File('${directory.path}/sync.csv');
+    final syncText = await syncFile.exists() ? await syncFile.readAsString() : '';
+    final eventsFile = File('${directory.path}/events.csv');
+    if (!await eventsFile.exists()) {
+      await eventsFile.writeAsString('host_epoch_ms,device_ms,label\n');
+    }
+    if (!await syncFile.exists()) {
+      await syncFile.writeAsString('host_epoch_ms,device_ms\n');
+    }
+
+    final preview = SignalPreviewBuilder.fromRecording(rawText, syncText);
+    await File('${directory.path}/signals.csv').writeAsString(preview.toCsv());
+
+    var count = 0;
+    final tags = <String>{};
+    for (final p in EmotiBitPacket.parseAll(rawText)) {
+      count++;
+      if (TypeTag.sensorStreams.contains(p.typeTag) || TypeTag.derived.contains(p.typeTag)) {
+        tags.add(p.typeTag);
+      }
+    }
+    int? lastHostMs;
+    for (final line in syncText.split('\n').reversed) {
+      lastHostMs = int.tryParse(line.split(',').first.trim());
+      if (lastHostMs != null) break;
+    }
+    lastHostMs ??= (await raw.lastModified()).millisecondsSinceEpoch;
+    return RecoveredRecording(
+      directory: directory,
+      preview: preview,
+      packetCount: count,
+      tagsSeen: tags,
+      endedAtMs: lastHostMs,
+    );
+  }
 
   static Future<SessionRecorder> start(Directory directory) async {
     await directory.create(recursive: true);
@@ -78,4 +139,25 @@ class SessionRecorder {
   }
 
   Duration get duration => (endedAt ?? DateTime.now()).difference(startedAt!);
+}
+
+/// A recording closed by [SessionRecorder.recover].
+class RecoveredRecording {
+  RecoveredRecording({
+    required this.directory,
+    required this.preview,
+    required this.packetCount,
+    required this.tagsSeen,
+    required this.endedAtMs,
+  });
+
+  final Directory directory;
+  final SignalPreviewBuilder preview;
+  final int packetCount;
+  final Set<String> tagsSeen;
+
+  /// Phone time of the last data written (last `sync.csv` line).
+  final int endedAtMs;
+
+  List<File> get files => SessionRecorder.filesIn(directory);
 }

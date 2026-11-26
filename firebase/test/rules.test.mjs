@@ -311,6 +311,19 @@ describe('sessions', () => {
     await assertFails(updateDoc(sessionRef(alice()), { events: tooMany }));
     await assertFails(updateDoc(sessionRef(carol()), { events: arrayUnion({ atMs: 5, kind: 'calmed' }) }));
   });
+  test('the recording phone stores how the session ended and its gaps', async () => {
+    const gaps = [{ fromMs: 1000, toMs: 4000 }];
+    await assertSucceeds(updateDoc(sessionRef(alice()), { endReason: 'deviceLost', gaps }));
+    await assertSucceeds(updateDoc(sessionRef(alice()), { endReason: 'appClosed' }));
+    await assertSucceeds(updateDoc(sessionRef(alice()), { endReason: 'stopped', gaps: [] }));
+    await assertFails(updateDoc(sessionRef(alice()), { endReason: 'crashed' }));
+    await assertFails(updateDoc(sessionRef(alice()), { gaps: 'none' }));
+    const tooMany = Array.from({ length: 501 }, (_, i) => ({ fromMs: i, toMs: i + 1 }));
+    await assertFails(updateDoc(sessionRef(alice()), { gaps: tooMany }));
+    await assertFails(updateDoc(sessionRef(carol()), { endReason: 'stopped' }));
+    await assertFails(setDoc(sessionRef(carol(), 's2'),
+      session({ createdByUid: 'carol', endReason: 'oops' })));
+  });
   test('linked tutors and staff read sessions; others cannot', async () => {
     await assertSucceeds(getDocs(collection(carol().firestore(), 'children', C1, 'sessions')));
     await assertSucceeds(getDocs(collection(dave().firestore(), 'children', C1, 'sessions')));

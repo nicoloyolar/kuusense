@@ -222,6 +222,15 @@ class EmotiBitSimulator {
     );
   }
 
+  /// Stops sending data while keeping the connection open, like a device
+  /// that froze or walked out of WiFi range. Used to test drop detection.
+  void pauseStreaming() {
+    for (final t in _streamTimers) {
+      t.cancel();
+    }
+    _streamTimers.clear();
+  }
+
   Future<void> stop() async {
     _disconnect();
     for (final t in _timers) {

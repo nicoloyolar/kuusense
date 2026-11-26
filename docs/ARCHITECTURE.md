@@ -75,13 +75,27 @@ Verificado contra el firmware oficial (`EmotiBit_FeatherWing/EmotiBitWiFi.cpp`, 
 - **Keepalive:** `PN` con `DP,<dp>` al menos cada 10 s; nosotros lo enviamos cada 2 s.
 - **Sincronización de reloj:** cada ~5 s el dispositivo envía `RD` y el host responde `TL`, `TU` y `AK`.
 
-**No verificado todavía** (se valida con el hardware real, ver [EMOTIBIT_PRIMEROS_PASOS.md](EMOTIBIT_PRIMEROS_PASOS.md)): el formato de `TL`/`TU`, las frecuencias reales, los tags que realmente llegan, el formato del ID y la numeración de paquetes.
+**Verificado con el hardware real** (25-11-2026, EmotiBit `MD-V7-0000829`, HW V07a, firmware 1.14.0, una sesión de 5 min en reposo; detalle en [EMOTIBIT_PRIMEROS_PASOS.md](EMOTIBIT_PRIMEROS_PASOS.md)):
+
+- Nuestro descubrimiento, conexión, keepalive y sincronización funcionan sin cambios.
+- **ID:** formato `MD-V7-0000829`.
+- **Tags que llegan:** `EA EL PG PI PR AX AY AZ GX GY GZ MX MY MZ T1 TH HR BI SA SR SF B% BV EM`, más `RD TL TU AK` de sincronización. **No llega `T0`**: la temperatura viene como `T1` y `TH` (termopila).
+- **Frecuencias:** EDA 15 Hz, PPG e IMU 25 Hz, temperatura 7,5 Hz, HR y BI 1 Hz, batería cada ~5 s.
+- **HR y BI** los calcula el propio EmotiBit. Hay valores aislados irreales (máx. 210,9 bpm), así que hay que filtrarlos.
+- **Sincronización:** el dispositivo envía `RD` cada ~5,1 s. Los `TL` (hora local) y `TU` (hora UTC) quedan en el flujo con formato `2026-11-25_15-43-29-275851`, seguidos de un `AK`.
+- **Numeración de paquetes:** no empieza en 0 al conectar y no siempre llega en orden. Los paquetes de control (`RD`, `TL`, `TU`, `AK`) se intercalan con números cercanos. Los `EM` y `RD` a veces llegan duplicados (misma línea dos veces).
+- **Pérdida de paquetes:** 0,5 a 0,8 % cerca del router.
+- **EDA sin contacto:** si los electrodos no tocan la piel, `EA` queda fija en ~0,0302 µS (`EL` saturado). En la parte superior del brazo no hubo contacto; en la yema del dedo índice sí.
+
+**No verificado todavía:** la estabilidad en sesiones de 15 minutos, la pérdida de paquetes con movimiento o lejos del router, la respuesta de la EDA a un estímulo y que el `raw.csv` abra en el DataParser oficial.
 
 ### Formato de una sesión grabada
 - `raw.csv`: líneas tal cual las envía el EmotiBit, compatibles con el **EmotiBit DataParser** oficial.
 - `sync.csv`: pares `host_epoch_ms,device_ms` (~1/s) para pasar el reloj del dispositivo (ms desde el encendido) a hora real.
-- `events.csv`: eventos marcados durante la sesión, con la hora del teléfono y la del dispositivo. Guarda el id de la conducta (`crisisStart`, `note:texto`); un error se corrige con una línea `undo:<id>`, sin borrar.
+- `events.csv`: eventos marcados durante la sesión, con la hora del teléfono y la del dispositivo. Guarda el id de la conducta (`crisisStart`, `note:texto`); un error se corrige con una línea `undo:<id>`, sin borrar. Los cortes de conexión quedan como `gap_start` y `gap_end`.
 - `signals.csv`: resumen de un valor por segundo (frecuencia cardíaca, EDA, temperatura de la piel, intensidad de movimiento y batería) para los gráficos de la web. Lo genera el grabador al terminar, o `emotibit preview <carpeta>` para una grabación existente. Las cifras de toda la sesión (rango de cada señal, respuestas de EDA, pérdida de paquetes y batería) van en el campo `stats` de la sesión en Firestore.
+- `session.json` (solo en el teléfono, no se sube): metadatos para la cola de subida y para recuperar la sesión si la app se cierra a mitad de la grabación.
+- El documento de la sesión guarda `endReason` (`stopped`: la detuvo el tutor; `deviceLost`: el EmotiBit no volvió; `appClosed`: la app se cerró y la sesión se recuperó al abrirla) y `gaps` (tramos sin datos, `{fromMs, toMs}` en hora del teléfono). Si `endReason` no es `stopped`, la sesión se muestra como incompleta.
 - El documento de la sesión en Firestore guarda además el contexto (`context`: lugar, actividad, tipos de tutor presentes) y la lista de eventos (`events`), para verlos en vivo y filtrar el dataset.
 
 ## Firebase
@@ -118,6 +132,10 @@ Definido en `packages/kuusense_models/lib/src/models.dart`.
 
 ## Limitaciones conocidas
 1. **iOS:** buscar dispositivos por broadcast requiere un permiso de Apple (multicast). Mientras tanto se conecta por IP.
-2. La reconexión automática y la cola de subida persistente están planificadas para la Fase 1.
+2. **Grabación robusta (app móvil):**
+   - **Cortes:** 5 s sin datos del EmotiBit cuentan como un corte. La grabación sigue y la app busca el mismo dispositivo cada 3 s, primero en su última IP y después por broadcast, durante un máximo de 5 minutos.
+   - **Segundo plano:** en Android, un servicio en primer plano con notificación mantiene la grabación con la pantalla apagada. En iPhone, Apple no lo permite: la pantalla queda encendida y se puede oscurecer desde la app.
+   - **Subida:** una cola en disco sube las sesiones pendientes al abrir la app, cada 2 minutos y al terminar cada grabación.
+   - **Pendiente de probar con el hardware real.**
 3. Las pantallas de tutor y NNA, y la web de staff, todavía están por construir (Fase 0).
 4. Al eliminar un NNA, sus sesiones quedan guardadas de forma seudónima hasta que exista la herramienta de retención.

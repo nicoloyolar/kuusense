@@ -258,6 +258,38 @@ class Invite {
 
 enum SessionStatus { recording, uploading, uploaded, failed }
 
+/// Why a recording ended. Anything other than [stopped] means the session
+/// ended on its own and is shown as incomplete.
+enum SessionEndReason {
+  /// The tutor stopped it.
+  stopped,
+
+  /// The EmotiBit did not come back within the reconnection window.
+  deviceLost,
+
+  /// The app was closed or killed mid-recording; recovered on the next start.
+  appClosed,
+}
+
+/// A stretch of a session with no data from the EmotiBit (phone time). The
+/// recording kept going and resumed when the device reconnected.
+class SessionGap {
+  const SessionGap({required this.fromMs, required this.toMs});
+
+  /// Upper bound kept by the security rules.
+  static const maxPerSession = 500;
+
+  final int fromMs;
+  final int toMs;
+
+  Duration get duration => Duration(milliseconds: toMs - fromMs);
+
+  factory SessionGap.fromMap(Map<String, dynamic> m) =>
+      SessionGap(fromMs: _ms(m['fromMs']), toMs: _ms(m['toMs']));
+
+  Map<String, dynamic> toMap() => {'fromMs': fromMs, 'toMs': toMs};
+}
+
 /// Latest values pushed by the phone every few seconds while recording.
 class LiveSnapshot {
   LiveSnapshot({
@@ -443,6 +475,8 @@ class RecordingSession {
     this.context = const SessionContext(),
     this.events = const [],
     this.stats,
+    this.endReason,
+    this.gaps = const [],
   });
 
   final String id;
@@ -470,6 +504,15 @@ class RecordingSession {
 
   /// Whole-session figures, written with the files at upload time.
   final SessionStats? stats;
+
+  /// Null while recording, and in sessions recorded before this field existed.
+  final SessionEndReason? endReason;
+
+  /// Stretches without device data (connection drops that recovered).
+  final List<SessionGap> gaps;
+
+  /// Ended by itself (device lost or app closed) instead of by the tutor.
+  bool get isIncomplete => endReason != null && endReason != SessionEndReason.stopped;
 
   /// Belongs to a fictional demo child.
   bool get isDemo => childId.startsWith(Child.demoIdPrefix);
@@ -502,6 +545,11 @@ class RecordingSession {
         stats: m['stats'] == null
             ? null
             : SessionStats.fromMap(Map<String, dynamic>.from(m['stats'] as Map)),
+        endReason: SessionEndReason.values.asNameMap()[m['endReason']],
+        gaps: [
+          for (final g in (m['gaps'] as List? ?? const []))
+            SessionGap.fromMap(Map<String, dynamic>.from(g as Map)),
+        ],
       );
 
   Map<String, dynamic> toMap() => {
@@ -519,6 +567,8 @@ class RecordingSession {
         'context': context.toMap(),
         'events': [for (final e in events) e.toMap()],
         if (stats != null) 'stats': stats!.toMap(),
+        if (endReason != null) 'endReason': endReason!.name,
+        if (gaps.isNotEmpty) 'gaps': [for (final g in gaps) g.toMap()],
       };
 }
 

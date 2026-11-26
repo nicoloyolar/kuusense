@@ -89,22 +89,28 @@ abstract final class EmotiBitHost {
     return found.values.toList();
   }
 
+  /// [dataTimeout]: with no data packet for this long the connection is
+  /// treated as lost (device off, out of WiFi range or frozen). The TCP
+  /// control channel alone can take much longer to notice.
   static Future<EmotiBitConnection> connect(
     DiscoveredEmotiBit device, {
     Duration timeout = const Duration(seconds: 5),
+    Duration dataTimeout = EmotiBitConnection.defaultDataTimeout,
     EmotiBitLogger? log,
   }) =>
-      EmotiBitConnection._open(device, timeout, log);
+      EmotiBitConnection._open(device, timeout, dataTimeout, log);
 }
 
 /// A live connection to one EmotiBit.
 class EmotiBitConnection {
-  EmotiBitConnection._(this.device, this._control, this._data, this._adv, this._log);
+  EmotiBitConnection._(
+      this.device, this._control, this._data, this._adv, this._dataTimeout, this._log);
 
   final DiscoveredEmotiBit device;
   final ServerSocket _control;
   final RawDatagramSocket _data;
   final RawDatagramSocket _adv;
+  final Duration _dataTimeout;
   final EmotiBitLogger? _log;
   Socket? _controlClient;
   final _controlMessages = StreamController<EmotiBitPacket>.broadcast();
@@ -118,10 +124,17 @@ class EmotiBitConnection {
   EmotiBitConnectionStatus _current = EmotiBitConnectionStatus.connecting;
   Timer? _pingTimer;
   DateTime _lastPong = DateTime.now();
+  DateTime _lastData = DateTime.now();
   int _hostPacketNumber = 0;
 
   static const pingInterval = Duration(seconds: 2);
   static const pongTimeout = Duration(seconds: 10);
+
+  /// The real device sends data ~10 times per second; 5 s of silence is a drop.
+  static const defaultDataTimeout = Duration(seconds: 5);
+
+  /// Watchdog tick (also sends the keepalive every [pingInterval]).
+  static const _watchInterval = Duration(milliseconds: 500);
 
   /// Every packet received on the data channel (sensor data, derived metrics,
   /// battery, etc.), in arrival order.
@@ -133,11 +146,11 @@ class EmotiBitConnection {
   int get dataPort => _data.port;
 
   static Future<EmotiBitConnection> _open(
-      DiscoveredEmotiBit device, Duration timeout, EmotiBitLogger? log) async {
+      DiscoveredEmotiBit device, Duration timeout, Duration dataTimeout, EmotiBitLogger? log) async {
     final control = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     final data = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
     final adv = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-    final conn = EmotiBitConnection._(device, control, data, adv, log);
+    final conn = EmotiBitConnection._(device, control, data, adv, dataTimeout, log);
     log?.call('Host: control TCP :${control.port}, datos UDP :${data.port}');
     try {
       await conn._handshake(timeout);
@@ -203,13 +216,24 @@ class EmotiBitConnection {
     );
 
     _lastPong = DateTime.now();
-    _pingTimer = Timer.periodic(pingInterval, (_) {
-      if (DateTime.now().difference(_lastPong) > pongTimeout) {
+    _lastData = DateTime.now();
+    var lastPing = DateTime.fromMillisecondsSinceEpoch(0);
+    _pingTimer = Timer.periodic(_watchInterval, (_) {
+      final now = DateTime.now();
+      if (now.difference(_lastPong) > pongTimeout) {
         _log?.call('Sin PONG por ${pongTimeout.inSeconds} s → desconectado');
         close(sendDisconnect: false);
         return;
       }
-      _sendAdv(_packet(TypeTag.ping, [PayloadLabel.dataPort, '${_data.port}']));
+      if (now.difference(_lastData) > _dataTimeout) {
+        _log?.call('Sin datos por ${_dataTimeout.inMilliseconds} ms → desconectado');
+        close(sendDisconnect: false);
+        return;
+      }
+      if (now.difference(lastPing) >= pingInterval) {
+        lastPing = now;
+        _sendAdv(_packet(TypeTag.ping, [PayloadLabel.dataPort, '${_data.port}']));
+      }
     });
     _log?.call('Conectado a ${device.deviceId}');
     _setStatus(EmotiBitConnectionStatus.connected);
@@ -219,6 +243,7 @@ class EmotiBitConnection {
     if (event != RawSocketEvent.read) return;
     final dg = _data.receive();
     if (dg == null) return;
+    _lastData = DateTime.now();
     for (final p in EmotiBitPacket.parseAll(utf8.decode(dg.data, allowMalformed: true))) {
       if (p.typeTag == TypeTag.requestData) {
         _answerTimeSync(p, dg.address, dg.port);

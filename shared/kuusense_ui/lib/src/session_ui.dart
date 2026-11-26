@@ -166,6 +166,56 @@ class KuuIconTile extends StatelessWidget {
 }
 
 /// Small tinted pill with an icon and text.
+/// Warns that a session has missing data: connection drops and/or it ended
+/// by itself. Empty when the session is complete.
+class KuuDataGapsNote extends StatelessWidget {
+  const KuuDataGapsNote({super.key, required this.session});
+  final RecordingSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = session;
+    if (!s.isIncomplete && s.gaps.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final lines = [
+      if (s.isIncomplete) sessionEndReasonLabel(s.endReason),
+      if (s.gaps.isNotEmpty) sessionGapsSummary(s.gaps),
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(top: KuuSpacing.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 18, color: theme.colorScheme.error),
+          const SizedBox(width: KuuSpacing.xs),
+          Expanded(
+            child: Text(
+              lines.join('\n'),
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Marks a session that ended by itself (device lost or app closed).
+class KuuIncompletePill extends StatelessWidget {
+  const KuuIncompletePill({super.key, required this.session});
+  final RecordingSession session;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: sessionEndReasonLabel(session.endReason),
+        child: KuuPill(
+          icon: Icons.warning_amber_rounded,
+          text: 'Incompleta',
+          color: Theme.of(context).colorScheme.error,
+        ),
+      );
+}
+
 class KuuPill extends StatelessWidget {
   const KuuPill({
     super.key,
@@ -462,6 +512,7 @@ class KuuSessionTile extends StatelessWidget {
             color: theme.colorScheme.primary,
           ),
         KuuOutcomeBadge(outcome: outcome),
+        if (s.isIncomplete) KuuIncompletePill(session: s),
         ?trailingStatus,
       ],
     );

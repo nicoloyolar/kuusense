@@ -349,6 +349,19 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
                       KuuSessionTile(
                         session: s,
                         compact: true,
+                        trailingStatus: switch (s.status) {
+                          SessionStatus.uploaded => null,
+                          SessionStatus.recording when s.endedAtMs == null => KuuPill(
+                            icon: Icons.fiber_manual_record,
+                            text: 'Grabando',
+                            color: theme.colorScheme.error,
+                          ),
+                          _ => KuuPill(
+                            icon: Icons.cloud_upload_outlined,
+                            text: 'Pendiente de subir',
+                            color: theme.colorScheme.primary,
+                          ),
+                        },
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
                             builder: (_) => SessionDetailScreen(

@@ -26,7 +26,9 @@ class RecordingFlow extends StatelessWidget {
             );
           }
         },
-        child: controller.isConnected
+        // While recording, the session screen stays up even if the device
+        // dropped (it shows the reconnection state).
+        child: controller.isConnected || controller.isRecording
             ? SessionScreen(controller: controller)
             : ConnectScreen(controller: controller),
       ),

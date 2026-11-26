@@ -37,6 +37,20 @@ String sessionStatusLabel(SessionStatus s) => switch (s) {
   SessionStatus.failed => 'Con error',
 };
 
+String sessionEndReasonLabel(SessionEndReason? r) => switch (r) {
+  null => 'Sin información de cierre',
+  SessionEndReason.stopped => 'Detenida por el tutor',
+  SessionEndReason.deviceLost => 'Se cerró sola: el EmotiBit no volvió a conectarse',
+  SessionEndReason.appClosed => 'Se cerró sola: la app se cerró durante la grabación',
+};
+
+/// Total time without data, e.g. `2 cortes · 1:35 sin datos`.
+String sessionGapsSummary(List<SessionGap> gaps) {
+  final total = gaps.fold(Duration.zero, (a, g) => a + g.duration);
+  final n = gaps.length == 1 ? '1 corte' : '${gaps.length} cortes';
+  return '$n · ${formatOffset(total)} sin datos';
+}
+
 /// `Colegio · Clase o tarea`, or `Sin contexto`.
 String contextSummary(SessionContext c) {
   final parts = [?c.place?.label, ?c.activity?.label];

@@ -5,16 +5,27 @@ import 'dart:io';
 import 'package:emotibit/emotibit.dart';
 import 'package:flutter/foundation.dart';
 import 'package:kuusense_firebase/kuusense_firebase.dart';
-import 'package:path_provider/path_provider.dart';
 
-enum UploadState { idle, uploading, done, failed }
+import 'background_recording.dart';
+import 'session_upload_queue.dart';
+
+export 'session_upload_queue.dart' show UploadState;
 
 /// Holds everything the tutor app does with the device: selected child, connection,
 /// live values, recording and upload. Screens only read from / call into this.
 class RecordingController extends ChangeNotifier {
-  RecordingController(this.repo);
+  RecordingController(this.repo) : uploads = SessionUploadQueue(repo) {
+    uploads.addListener(notifyListeners);
+  }
 
   final KuusenseRepository repo;
+
+  /// Finished sessions still on the phone; uploads them when it can.
+  final SessionUploadQueue uploads;
+
+  /// How long a recording waits for a lost EmotiBit before it is closed.
+  static const reconnectWindow = Duration(minutes: 5);
+  static const _reconnectEvery = Duration(seconds: 3);
 
   // ---------------------------------------------------------------- selected child
   /// The child (NNA) the tutor is working with; sessions are recorded for it.
@@ -53,8 +64,12 @@ class RecordingController extends ChangeNotifier {
   Future<void> connect(DiscoveredEmotiBit device) async {
     await disconnect();
     deviceLostMessage = null;
-    final conn = await EmotiBitHost.connect(device);
+    _attach(await EmotiBitHost.connect(device));
+  }
+
+  void _attach(EmotiBitConnection conn) {
     connection = conn;
+    _lastDevice = conn.device;
     _packetSub = conn.packets.listen(_onPacket);
     _statusSub = conn.statusChanges.listen((s) {
       if (s == EmotiBitConnectionStatus.disconnected) _onDeviceLost();
@@ -68,19 +83,114 @@ class RecordingController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> disconnect() async {
+  Future<void> _detach() async {
     await _packetSub?.cancel();
     await _statusSub?.cancel();
-    await connection?.close();
+    _packetSub = null;
+    _statusSub = null;
+    final c = connection;
     connection = null;
+    await c?.close();
+  }
+
+  Future<void> disconnect() async {
+    await _detach();
     notifyListeners();
   }
 
   void _onDeviceLost() {
-    connection = null;
-    deviceLostMessage = 'Se perdió la conexión con el EmotiBit.';
-    if (isRecording) stopRecording();
+    _detach();
+    if (isRecording) {
+      _beginReconnect();
+    } else {
+      deviceLostMessage = 'Se perdió la conexión con el EmotiBit.';
+    }
     notifyListeners();
+  }
+
+  // ---------------------------------------------------------------- reconnection
+  DiscoveredEmotiBit? _lastDevice;
+  DateTime? _gapStart;
+  int _reconnectRun = 0;
+
+  /// The device dropped during a recording and the app is looking for it.
+  bool get isReconnecting => _gapStart != null;
+
+  /// Time left before the recording is closed if the device does not return.
+  Duration get reconnectTimeLeft {
+    final start = _gapStart;
+    if (start == null) return Duration.zero;
+    final left = reconnectWindow - DateTime.now().difference(start);
+    return left.isNegative ? Duration.zero : left;
+  }
+
+  /// Keeps the recording open and tries to reach the same EmotiBit again.
+  /// The gap is marked in events.csv (`gap_start`/`gap_end`) and saved in
+  /// the session, so the dataset shows where data is missing.
+  void _beginReconnect() {
+    if (_gapStart != null) return;
+    _gapStart = DateTime.now();
+    _recorder?.mark('gap_start');
+    BackgroundRecording.status('Reconectando con el EmotiBit…');
+    _reconnectLoop(++_reconnectRun);
+  }
+
+  Future<void> _reconnectLoop(int run) async {
+    final device = _lastDevice;
+    while (run == _reconnectRun && isRecording && _gapStart != null) {
+      if (device != null) {
+        final conn = await _tryReconnect(device);
+        if (run != _reconnectRun || !isRecording || _gapStart == null) {
+          await conn?.close();
+          return;
+        }
+        if (conn != null) {
+          _endGap();
+          _attach(conn);
+          BackgroundRecording.status('Grabando sesión');
+          return;
+        }
+      }
+      if (reconnectTimeLeft == Duration.zero) {
+        await stopRecording(reason: SessionEndReason.deviceLost);
+        return;
+      }
+      notifyListeners(); // countdown
+      await Future<void>.delayed(_reconnectEvery);
+    }
+  }
+
+  /// Looks for the device at its last address, then by broadcast (its IP
+  /// may change if it rebooted), and connects if it answers.
+  Future<EmotiBitConnection?> _tryReconnect(DiscoveredEmotiBit last) async {
+    for (final targets in [
+      [last.address],
+      null, // broadcast
+    ]) {
+      try {
+        final found = await EmotiBitHost.discover(targets: targets);
+        final match = found.where((d) => d.deviceId == last.deviceId);
+        if (match.isEmpty) continue;
+        return await EmotiBitHost.connect(match.first);
+      } catch (e) {
+        debugPrint('reconnect attempt failed: $e');
+      }
+    }
+    return null;
+  }
+
+  void _endGap() {
+    final start = _gapStart;
+    if (start == null) return;
+    _gapStart = null;
+    _recorder?.mark('gap_end');
+    if (_gaps.length < SessionGap.maxPerSession) {
+      _gaps.add(SessionGap(
+        fromMs: start.millisecondsSinceEpoch,
+        toMs: DateTime.now().millisecondsSinceEpoch,
+      ));
+    }
+    _saveMeta();
   }
 
   String? deviceLostMessage;
@@ -116,9 +226,17 @@ class RecordingController extends ChangeNotifier {
   // ---------------------------------------------------------------- recording
   SessionRecorder? _recorder;
   RecordingSession? session;
+  PendingSession? _meta;
   Timer? _liveTimer;
-  UploadState uploadState = UploadState.idle;
-  String? uploadError;
+  final List<SessionGap> _gaps = [];
+
+  /// Upload state of the last recorded session.
+  UploadState get uploadState {
+    final s = session;
+    return (s == null || isRecording) ? UploadState.idle : uploads.stateOf(s.id);
+  }
+
+  String? get uploadError => session == null ? null : uploads.errorOf(session!.id);
 
   /// Behaviors and notes marked during the current session, in order.
   final List<SessionEvent> events = [];
@@ -131,9 +249,8 @@ class RecordingController extends ChangeNotifier {
   }) async {
     final conn = connection;
     if (conn == null || childId == null || isRecording) return;
-    uploadState = UploadState.idle;
-    uploadError = null;
     events.clear();
+    _gaps.clear();
     final s = await repo.startSession(
       childId: childId!,
       deviceId: conn.device.deviceId,
@@ -141,12 +258,34 @@ class RecordingController extends ChangeNotifier {
       context: context,
     );
     session = s;
-    final dir = await getApplicationDocumentsDirectory();
-    _recorder = await SessionRecorder.start(
-      Directory('${dir.path}/sessions/${s.id}'),
+    uploads.activeSessionId = s.id;
+    final dir = await SessionUploadQueue.dirFor(s.id);
+    _recorder = await SessionRecorder.start(dir);
+    _meta = PendingSession(
+      sessionId: s.id,
+      childId: s.childId,
+      uid: s.createdByUid,
+      startedAtMs: s.startedAtMs,
     );
+    await _saveMeta();
     _liveTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pushLive());
+    await BackgroundRecording.begin();
     notifyListeners();
+  }
+
+  /// Keeps session.json up to date so nothing is lost if the app dies.
+  Future<void> _saveMeta() async {
+    final m = _meta;
+    final rec = _recorder;
+    if (m == null || rec == null) return;
+    m
+      ..gaps = List.of(_gaps)
+      ..events = List.of(events);
+    try {
+      await m.write(rec.directory);
+    } catch (e) {
+      debugPrint('session.json not written: $e');
+    }
   }
 
   /// Marks a behavior from [BehaviorCatalog] (or a note) at the current time.
@@ -166,6 +305,7 @@ class RecordingController extends ChangeNotifier {
     _recorder!.mark(event.note == null ? kind : '$kind:${event.note}');
     connection?.sendUserNote(event.label); // also lands on the device's SD file
     events.add(event);
+    _saveMeta();
     repo
         .addSessionEvent(s.childId, s.id, event)
         .catchError((Object e) => debugPrint('event push failed: $e'));
@@ -179,6 +319,7 @@ class RecordingController extends ChangeNotifier {
     if (!isRecording || s == null || events.isEmpty) return;
     final event = events.removeLast();
     _recorder!.mark('undo:${event.kind}');
+    _saveMeta();
     repo
         .removeSessionEvent(s.childId, s.id, event)
         .catchError((Object e) => debugPrint('event undo failed: $e'));
@@ -203,67 +344,51 @@ class RecordingController extends ChangeNotifier {
         .catchError((Object e) => debugPrint('live push failed: $e'));
   }
 
-  Future<void> stopRecording() async {
+  Future<void> stopRecording({
+    SessionEndReason reason = SessionEndReason.stopped,
+  }) async {
     final rec = _recorder;
     final s = session;
-    if (rec == null || s == null || rec.endedAt != null) return;
+    final m = _meta;
+    if (rec == null || s == null || m == null || rec.endedAt != null) return;
+    _reconnectRun++; // ends any reconnection loop
+    if (_gapStart != null) _endGap();
     _liveTimer?.cancel();
     await rec.stop();
-    notifyListeners();
-    await _upload(s, rec);
-  }
-
-  Future<void> _upload(RecordingSession s, SessionRecorder rec) async {
-    uploadState = UploadState.uploading;
-    notifyListeners();
-    try {
-      await repo.updateSession(s.childId, s.id, {
-        'status': SessionStatus.uploading.name,
-        'endedAtMs': rec.endedAt!.millisecondsSinceEpoch,
-        'packetCount': rec.packetCount,
-        'streams': rec.tagsSeen.toList()..sort(),
-        'stats': rec.preview.statsJson(),
-        // Full list again, in case a live event write was lost offline.
-        'events': [for (final e in events) e.toMap()],
-      });
-      final files = <String, String>{};
-      for (final f in rec.files) {
-        final name = f.uri.pathSegments.last;
-        final ref = repo.sessionFileRef(s.childId, s.id, name);
-        await ref.putFile(f);
-        files[name] = ref.fullPath;
-      }
-      await repo.updateSession(s.childId, s.id, {
-        'files': files,
-        'status': SessionStatus.uploaded.name,
-      });
-      uploadState = UploadState.done;
-      // Local copy kept until the upload succeeded; now safe to delete.
-      await rec.directory.delete(recursive: true);
-    } catch (e) {
-      uploadState = UploadState.failed;
-      uploadError = '$e';
-      await repo
-          .updateSession(s.childId, s.id, {'status': SessionStatus.failed.name})
-          .catchError((_) {});
+    final streams = rec.tagsSeen.toList()..sort();
+    m
+      ..endedAtMs = rec.endedAt!.millisecondsSinceEpoch
+      ..endReason = reason
+      ..packetCount = rec.packetCount
+      ..streams = streams
+      ..stats = rec.preview.statsJson();
+    await _saveMeta();
+    uploads.activeSessionId = null;
+    await BackgroundRecording.end();
+    if (reason == SessionEndReason.deviceLost) {
+      deviceLostMessage =
+          'El EmotiBit no volvió en ${reconnectWindow.inMinutes} minutos. '
+          'La sesión se cerró y se guardó como incompleta.';
     }
     notifyListeners();
+    await uploads.run();
   }
 
-  /// Retries a failed upload of the last session (files are still on disk).
-  Future<void> retryUpload() async {
-    final rec = _recorder;
-    final s = session;
-    if (rec != null && s != null && uploadState == UploadState.failed) {
-      await _upload(s, rec);
-    }
-  }
+  /// Retries uploads that failed (files are still on the phone).
+  Future<void> retryUpload() => uploads.run();
+
+  /// Starts the upload queue: recovers sessions left open by a closed app and
+  /// uploads anything pending. Called once after sign-in.
+  void startUploads() => uploads.start();
 
   @override
   void dispose() {
+    _reconnectRun++;
     _uiTimer?.cancel();
     _liveTimer?.cancel();
     connection?.close();
+    uploads.removeListener(notifyListeners);
+    uploads.dispose();
     super.dispose();
   }
 }

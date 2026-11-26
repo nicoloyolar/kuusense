@@ -169,6 +169,7 @@ class _Header extends StatelessWidget {
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
+                KuuDataGapsNote(session: s),
               ],
             ),
           ],

@@ -69,4 +69,30 @@ void main() {
     expect(points.last.heartRate, isNull);
     expect(points.last.eda, 6.0);
   });
+
+  test('session end reason and gaps round-trip; old sessions stay complete', () {
+    final s = RecordingSession.fromMap('s', {
+      'status': 'uploaded',
+      'endReason': 'deviceLost',
+      'gaps': [
+        {'fromMs': 1000, 'toMs': 4000},
+      ],
+    });
+    expect(s.endReason, SessionEndReason.deviceLost);
+    expect(s.isIncomplete, isTrue);
+    expect(s.gaps.single.duration, const Duration(seconds: 3));
+    final back = RecordingSession.fromMap('s', s.toMap());
+    expect(back.endReason, SessionEndReason.deviceLost);
+    expect(back.gaps.single.toMs, 4000);
+
+    final old = RecordingSession.fromMap('s', {'status': 'uploaded'});
+    expect(old.endReason, isNull);
+    expect(old.isIncomplete, isFalse);
+    expect(old.gaps, isEmpty);
+    expect(old.toMap().containsKey('endReason'), isFalse);
+    expect(
+      RecordingSession.fromMap('s', {'endReason': 'stopped'}).isIncomplete,
+      isFalse,
+    );
+  });
 }

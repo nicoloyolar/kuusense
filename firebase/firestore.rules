@@ -163,11 +163,17 @@ service cloud.firestore {
             && d.stats.keys().hasOnly(['heartRate', 'eda', 'temperature', 'scrCount',
                                        'lossPercent', 'batteryStart', 'batteryEnd']));
         }
+        // How the recording ended, and stretches without device data.
+        function validEnd(d) {
+          return (!('endReason' in d) || d.endReason == null
+                  || d.endReason in ['stopped', 'deviceLost', 'appClosed'])
+            && (!('gaps' in d) || (d.gaps is list && d.gaps.size() <= 500));
+        }
         function validNewSession(d) {
           return d.keys().hasOnly(['childId', 'deviceId', 'createdByUid', 'startedAtMs', 'endedAtMs',
                                    'status', 'packetCount', 'streams', 'files', 'live', 'appVersion',
-                                   'context', 'events', 'stats'])
-            && validContext(d) && validEvents(d) && validStats(d)
+                                   'context', 'events', 'stats', 'endReason', 'gaps'])
+            && validContext(d) && validEvents(d) && validStats(d) && validEnd(d)
             && d.childId == childId
             && d.createdByUid == request.auth.uid
             && d.status == 'recording'
@@ -182,9 +188,9 @@ service cloud.firestore {
           && resource.data.createdByUid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['live', 'status', 'endedAtMs', 'packetCount', 'streams', 'files',
-                         'context', 'events', 'stats'])
+                         'context', 'events', 'stats', 'endReason', 'gaps'])
           && validContext(request.resource.data) && validEvents(request.resource.data)
-          && validStats(request.resource.data)
+          && validStats(request.resource.data) && validEnd(request.resource.data)
           && request.resource.data.status in ['recording', 'uploading', 'uploaded', 'failed'];
         // Research data: deletion goes through admin tooling (retention policy).
         allow delete: if false;

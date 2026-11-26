@@ -98,6 +98,7 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
                   ),
                 ),
               ),
+              KuuDataGapsNote(session: s),
               const SizedBox(height: KuuSpacing.md),
               Row(
                 children: [
