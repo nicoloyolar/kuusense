@@ -1,8 +1,12 @@
-// End-to-end check of the Fase 0 tutor flow against the local Firebase
-// emulators: two tutors with different accounts follow the same child.
+// End-to-end check of the tutor flow against the local Firebase emulators:
+// two tutors (created by an admin) follow the same child.
 //
 // Run with the emulators up (`make emulators`) and a simulator booted:
 //   make e2e
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -35,26 +39,42 @@ Future<void> type(WidgetTester t, String label, String text) async {
   await t.enterText(field, text);
 }
 
-Future<void> createAccount(WidgetTester t, String name, String email) async {
-  await tap(t, find.text('Crear una cuenta'));
-  await type(t, 'Tu nombre', name);
-  await type(t, 'Correo', email);
-  await type(t, 'Contraseña', 'clave1234');
-  await type(t, 'Repite la contraseña', 'clave1234');
-  await tap(t, find.byType(Checkbox));
-  await tap(t, find.widgetWithText(FilledButton, 'Crear cuenta'));
+/// Tutors are created by an admin on the web platform; here the test plays
+/// the admin: it creates the account and writes the tutor profile straight
+/// to the Firestore emulator (the `owner` token bypasses the rules).
+Future<void> seedTutor(String name, String email, String type) async {
+  final cred = await FirebaseAuth.instance
+      .createUserWithEmailAndPassword(email: email, password: 'clave1234');
+  final uid = cred.user!.uid;
+  await FirebaseAuth.instance.signOut();
+  final host = KuusenseEnv.emulatorHost;
+  final client = HttpClient();
+  try {
+    final req = await client.patchUrl(Uri.parse(
+        'http://$host:8080/v1/projects/demo-kuusense/databases/(default)/documents/tutors/$uid'));
+    req.headers
+      ..contentType = ContentType.json
+      ..set('Authorization', 'Bearer owner');
+    req.write(jsonEncode({
+      'fields': {
+        'displayName': {'stringValue': name},
+        'type': {'stringValue': type},
+        'email': {'stringValue': email},
+        'active': {'booleanValue': true},
+        'createdAtMs': {'integerValue': '${DateTime.now().millisecondsSinceEpoch}'},
+      },
+    }));
+    final res = await req.close();
+    if (res.statusCode != 200) throw TestFailure('seedTutor failed: ${res.statusCode}');
+  } finally {
+    client.close();
+  }
 }
 
 Future<void> signIn(WidgetTester t, String email) async {
   await type(t, 'Correo', email);
   await type(t, 'Contraseña', 'clave1234');
   await tap(t, find.widgetWithText(FilledButton, 'Ingresar'));
-}
-
-Future<void> completeProfile(WidgetTester t, String type) async {
-  await waitFor(t, find.text('¡Hola! Cuéntanos un poco de ti'));
-  await tap(t, find.text(type));
-  await tap(t, find.widgetWithText(FilledButton, 'Continuar'));
 }
 
 Future<void> signOutFromHome(WidgetTester t) async {
@@ -82,13 +102,14 @@ void main() {
     final ana = 'ana.$run@kuusense.test';
     final bruno = 'bruno.$run@kuusense.test';
     final birthYear = DateTime.now().year - 8;
+    await seedTutor('Ana', ana, 'family');
+    await seedTutor('Bruno', bruno, 'teacher');
 
     await t.pumpWidget(KuusenseApp(auth: auth));
 
-    // --- Ana: account, profile, registers a child and creates an invite.
+    // --- Ana: signs in, registers a child and creates an invite.
     await waitFor(t, find.text('Te damos la bienvenida'));
-    await createAccount(t, 'Ana', ana);
-    await completeProfile(t, 'Familiar');
+    await signIn(t, ana);
     await tap(t, find.text('Registrar un niño/a'));
     await type(t, 'Apodo o nombre visible', 'Tomi');
     await tap(t, find.byType(DropdownButtonFormField<int>));
@@ -109,9 +130,8 @@ void main() {
     await waitFor(t, find.text('Tomi'));
     await signOutFromHome(t);
 
-    // --- Bruno: account, profile, joins with the code.
-    await createAccount(t, 'Bruno', bruno);
-    await completeProfile(t, 'Docente');
+    // --- Bruno: signs in and joins with the code.
+    await signIn(t, bruno);
     await waitFor(t, find.text('Todavía no acompañas a ningún niño/a. Regístralo, o únete con el código '
         'que te compartió otro tutor.'));
     await tap(t, find.text('Tengo un código de invitación'));

@@ -4,10 +4,11 @@ import 'package:kuusense_firebase/kuusense_firebase.dart';
 import '../children/children_home_screen.dart';
 import '../common/feedback.dart';
 import '../recording/recording_controller.dart';
-import '../tutor/tutor_profile_screen.dart';
+import 'package:kuusense_ui/kuusense_ui.dart';
 
 /// Everything after sign-in. Owns the per-user repository and recording
-/// controller; asks for the tutor profile the first time.
+/// controller. Accounts without an active tutor profile (created by an admin
+/// on the web platform) see a short explanation.
 class SignedInRoot extends StatefulWidget {
   const SignedInRoot({super.key, required this.auth});
   final AuthService auth;
@@ -60,13 +61,8 @@ class _SignedInRootState extends State<SignedInRoot> {
         }
         if (snap.connectionState == ConnectionState.waiting) return const LoadingView();
         final tutor = snap.data;
-        if (tutor == null) {
-          return TutorProfileScreen(
-            isOnboarding: true,
-            initialName: widget.auth.currentDisplayName,
-            onSave: (name, type) => repo.saveMyTutorProfile(displayName: name, type: type),
-            onSignOut: _signOut,
-          );
+        if (tutor == null || !tutor.active) {
+          return _NotEnabled(deactivated: tutor != null, onSignOut: _signOut);
         }
         return ChildrenHomeScreen(
           repo: repo,
@@ -75,6 +71,52 @@ class _SignedInRootState extends State<SignedInRoot> {
           onSignOut: _signOut,
         );
       },
+    );
+  }
+}
+
+class _NotEnabled extends StatelessWidget {
+  const _NotEnabled({required this.deactivated, required this.onSignOut});
+  final bool deactivated;
+  final VoidCallback onSignOut;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      body: KuuBrandBackground(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(KuuSpacing.lg),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const KuusenseLogo(height: 96),
+                    const SizedBox(height: KuuSpacing.lg),
+                    Text(
+                      deactivated ? 'Tu cuenta está desactivada' : 'Tu cuenta no está habilitada',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: KuuSpacing.sm),
+                    Text(
+                      'Contacta al administrador de KúuSense para que habilite tu cuenta de tutor.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: KuuSpacing.lg),
+                    OutlinedButton(onPressed: onSignOut, child: const Text('Cerrar sesión')),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

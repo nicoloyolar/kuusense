@@ -164,29 +164,23 @@ class _RecordingPanel extends StatelessWidget {
 
   Future<void> _askNote(BuildContext context) async {
     final text = TextEditingController();
-    final note = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Agregar nota'),
+    final note = await showKuuDialog<String>(
+      context,
+      builder: (ctx) => KuuDialog(
+        icon: Icons.edit_note_rounded,
+        title: 'Agregar nota',
+        message: 'Lo que observaste, sin nombres ni datos que identifiquen.',
         content: TextField(
           controller: text,
           autofocus: true,
           maxLength: SessionEvent.maxNoteLength,
           textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(
-            hintText: 'Lo que observaste, sin nombres',
-          ),
+          decoration: const InputDecoration(hintText: 'Ej.: se calmó con música suave'),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, text.text),
-            child: const Text('Agregar'),
-          ),
-        ],
+        primaryLabel: 'Agregar',
+        onPrimary: () => Navigator.pop(ctx, text.text),
+        secondaryLabel: 'Cancelar',
+        onSecondary: () => Navigator.pop(ctx),
       ),
     );
     if (note != null && note.trim().isNotEmpty) {

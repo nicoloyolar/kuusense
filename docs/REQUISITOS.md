@@ -24,7 +24,8 @@ Contexto: proyecto CORFO Semilla Inicia de 12 meses, para pasar de TRL 3 a TRL 5
 | **Admin** | Equipo KúuSense | Plataforma web |
 
 **Decidido:** cada tutor usa la app en su propio teléfono y con su propia cuenta. **Un mismo NNA puede estar vinculado a varios tutores** (por ejemplo, mamá, profesora y terapeuta).
-**Abierto:** quién registra al NNA, cómo se invita a otro tutor y qué permisos tiene cada tipo de tutor.
+**Decidido (26-11-2026):** las cuentas de tutor las crea solo el admin desde la plataforma web. El NNA lo registra un tutor desde la app o el admin desde la web. Los tutores se vinculan entre sí con un código de invitación, o el admin los vincula desde la web.
+**Abierto:** qué permisos tiene cada tipo de tutor.
 
 ## 3. Requisitos funcionales
 
@@ -130,6 +131,8 @@ Meta de calidad: al menos 90 % de datos válidos por sesión en la Fase 1 CORFO 
 | 24-11-2026 | El nombre "SensoRegula" no se considera (MVP anterior). |
 | 24-11-2026 | Modelo de datos: el NNA se guarda en dos partes, una seudónima para investigación y una privada (apodo y avatar) solo para sus tutores. Se guarda el año de nacimiento, no la fecha completa, y no se guardan fotos. |
 | 24-11-2026 | Cualquier tutor registra un NNA confirmando el consentimiento del cuidador. Otros tutores se vinculan con un código de 6 caracteres, válido por 48 h y de un solo uso. Por ahora, todos los tipos de tutor tienen los mismos permisos (pendiente pregunta 3). |
+| 26-11-2026 | Tres roles: administrador, investigador y tutor. Solo el admin crea, edita y desactiva tutores (plataforma web); la app no tiene registro de cuentas. El NNA se registra desde la app (tutor) o desde la web (admin, eligiendo al tutor responsable), con el mismo formulario. El admin ve el apodo del NNA y el correo del tutor; los investigadores no. El tutor edita su propio nombre y tipo. |
+| 26-11-2026 | Se eliminan los datos demo. Los NNA solo se crean desde las apps; la importación desde la terminal solo agrega sesiones a un NNA existente. |
 
 ## 7. Preguntas abiertas para la clienta
 

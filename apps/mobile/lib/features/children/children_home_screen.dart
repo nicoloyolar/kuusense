@@ -5,7 +5,6 @@ import 'package:kuusense_ui/kuusense_ui.dart';
 import '../common/feedback.dart';
 import '../recording/recording_controller.dart';
 import '../tutor/tutor_profile_screen.dart';
-import 'avatars.dart';
 import 'child_detail_screen.dart';
 import 'child_form_screen.dart';
 import 'join_with_code_screen.dart';
@@ -54,6 +53,7 @@ class _ChildrenHomeScreenState extends State<ChildrenHomeScreen> {
               displayName: d.displayName,
               avatarId: d.avatarId,
               birthYear: d.birthYear,
+              dunnQuadrant: d.dunnQuadrant,
               consentConfirmed: true,
             );
             newId = child.id;
@@ -121,6 +121,7 @@ class _ChildrenHomeScreenState extends State<ChildrenHomeScreen> {
       title: 'Cerrar sesión',
       message: '¿Quieres cerrar tu sesión en este teléfono?',
       confirmLabel: 'Cerrar sesión',
+      icon: Icons.logout_rounded,
     );
     if (ok) widget.onSignOut();
   }
@@ -295,10 +296,6 @@ class _ChildCardState extends State<_ChildCard> {
                                     ),
                                   ),
                                 ),
-                                if (widget.child.isDemo) ...[
-                                  const SizedBox(width: KuuSpacing.sm),
-                                  const KuuDemoBadge(),
-                                ],
                               ],
                             ),
                             Text(

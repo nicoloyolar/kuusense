@@ -6,7 +6,6 @@ import '../common/feedback.dart';
 import '../recording/recording_controller.dart';
 import '../recording/recording_flow.dart';
 import '../history/session_detail_screen.dart';
-import 'avatars.dart';
 import 'child_form_screen.dart';
 import 'invite_sheet.dart';
 
@@ -54,20 +53,15 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
               displayName: profile.displayName,
               avatarId: profile.avatarId,
               birthYear: child.birthYear,
+              dunnQuadrant: child.dunnQuadrant,
             ),
-            onSubmit: (d) async {
-              await repo.updateChildProfile(
-                child.id,
-                ChildProfile(displayName: d.displayName, avatarId: d.avatarId),
-              );
-              if (d.birthYear != child.birthYear) {
-                await repo.updateChild(
-                  child.id,
-                  birthYear: d.birthYear,
-                  dunnQuadrant: child.dunnQuadrant,
-                );
-              }
-            },
+            onSubmit: (d) => repo.editChild(
+              child.id,
+              displayName: d.displayName,
+              avatarId: d.avatarId,
+              birthYear: d.birthYear,
+              dunnQuadrant: d.dunnQuadrant,
+            ),
           ),
         ),
       );
@@ -89,6 +83,7 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
           'Ya no verás a $name en tu app. Para volver, otro tutor tendrá que invitarte.',
       confirmLabel: 'Desvincularme',
       destructive: true,
+      icon: Icons.link_off_rounded,
     );
     if (!ok || !mounted) return;
     setState(() => _leaving = true);
@@ -118,6 +113,7 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
       ].join('\n\n'),
       confirmLabel: 'Eliminar',
       destructive: true,
+      icon: Icons.delete_outline_rounded,
     );
     if (!ok || !mounted) return;
     setState(() => _leaving = true);
@@ -208,10 +204,6 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
                               ),
                             ),
                           ),
-                          if (child.isDemo) ...[
-                            const SizedBox(width: KuuSpacing.sm),
-                            const KuuDemoBadge(),
-                          ],
                         ],
                       ),
                       const SizedBox(height: KuuSpacing.xs),

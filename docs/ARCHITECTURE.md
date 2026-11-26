@@ -2,7 +2,7 @@
 
 KúuSense anticipa episodios de desregulación emocional en NNA con TEA usando las señales fisiológicas de un **EmotiBit**, y apoya a sus tutores (familia, docentes y terapeutas) con alertas y estrategias sensoriales. Requisitos en [REQUISITOS.md](REQUISITOS.md) y plan en [PLAN.md](PLAN.md).
 
-> Estado: **Fase 0 en curso.** Listos: la estructura del repo, la comunicación con el EmotiBit, la identidad visual compartida (provisoria) y las pantallas de login de ambas apps (sin conectar a Firebase Auth). Pendiente: el modelo de datos de tutores y NNA y el resto de las pantallas. En `apps/*/lib/screens/` y `apps/mobile/lib/app_controller.dart` queda código del esqueleto inicial, ya desconectado, que se reemplazará.
+> Estado: **Fase 1 en curso** (captura de sesiones con el EmotiBit real). Ver [PLAN.md](PLAN.md).
 
 ## Estructura del repositorio
 
@@ -114,19 +114,24 @@ Definido en `packages/kuusense_models/lib/src/models.dart`.
 
 | Ruta | Contenido | Quién lo ve |
 |---|---|---|
-| `tutors/{uid}` | Nombre visible y tipo (familiar, docente o terapeuta). El correo queda solo en Auth | El propio tutor y el staff |
-| `staff/{uid}` | Rol: investigador o admin. Se crea solo con herramientas de administración | El propio usuario |
+| `tutors/{uid}` | Nombre visible, tipo (familiar, docente o terapeuta), correo y si está activo. La contraseña queda solo en Auth | El propio tutor y el admin |
+| `staff/{uid}` | Rol: investigador o admin. Se crea solo con herramientas de administración (`make staff`) | El propio usuario |
 | `children/{id}` | **Parte de investigación del NNA:** código seudónimo (`N-4F7Q`), año de nacimiento, cuadrante de Dunn, responsable, tutores vinculados y fecha de confirmación del consentimiento | Tutores vinculados y staff |
-| `children/{id}/private/profile` | **Parte privada:** apodo y avatar predefinido (sin fotos) | Solo los tutores vinculados |
+| `children/{id}/private/profile` | **Parte privada:** apodo y avatar predefinido (sin fotos) | Tutores vinculados y admin (nunca investigadores) |
 | `children/{id}/sessions/{id}` | Metadatos de cada grabación | Tutores vinculados y staff |
 | `invites/{código}` | Código de invitación de 6 caracteres, válido por 48 h y de un solo uso | Se consulta por código exacto, nunca se lista |
 
+**Roles:** administrador, investigador y tutor. Una misma cuenta puede tener más de uno (por ejemplo, admin y tutor).
+
 **Permisos principales:**
-- Cualquier tutor registra un NNA y queda como responsable. Debe confirmar el consentimiento del cuidador.
+- **Solo el admin crea tutores**, desde la plataforma web (sección Tutores). La app no tiene registro. La cuenta se crea con una contraseña aleatoria y el tutor recibe un correo para elegir la suya. Se hace con una segunda instancia de Firebase en el navegador, sin Cloud Functions. Si el correo ya tiene cuenta (por ejemplo, alguien del staff), se habilita con `make tutor`.
+- El admin edita y **desactiva** tutores (no los borra). Un tutor desactivado conserva sus vínculos, pero las reglas le niegan todo acceso a NNA, sesiones e invitaciones.
+- **El NNA lo registra un tutor (app) o el admin (web, sección NNA) eligiendo el tutor responsable.** Ambos usan el mismo formulario compartido (`KuuChildForm` en `shared/kuusense_ui`), con confirmación de consentimiento.
+- El admin edita al NNA, elige qué tutores lo acompañan y quién es el responsable, y puede eliminarlo. Lee el apodo y avatar; los investigadores nunca.
 - Los tutores vinculados editan el perfil, invitan a otros tutores y graban sesiones. Por ahora, todos los tipos de tutor tienen los mismos permisos.
 - Solo el responsable elimina al NNA o desvincula a otros. Cualquier tutor puede desvincularse.
 - Para unirse, un tutor se agrega a sí mismo y borra la invitación en la misma operación. Así la invitación no se reutiliza, sin necesidad de Cloud Functions.
-- El staff lee la parte de investigación y todas las sesiones, pero nunca la parte privada. Tampoco modifica datos de los NNA.
+- Los investigadores leen la parte de investigación y todas las sesiones, pero nunca la parte privada ni los datos de los tutores. No modifican nada.
 - Solo el teléfono que grabó una sesión sube sus archivos. Los datos crudos solo los descarga el staff.
 - Las sesiones no se borran desde las apps. La eliminación queda sujeta a la política de retención, que se implementará con herramientas de administración.
 
@@ -137,5 +142,5 @@ Definido en `packages/kuusense_models/lib/src/models.dart`.
    - **Segundo plano:** en Android, un servicio en primer plano con notificación mantiene la grabación con la pantalla apagada. En iPhone, Apple no lo permite: la pantalla queda encendida y se puede oscurecer desde la app.
    - **Subida:** una cola en disco sube las sesiones pendientes al abrir la app, cada 2 minutos y al terminar cada grabación.
    - **Pendiente de probar con el hardware real.**
-3. Las pantallas de tutor y NNA, y la web de staff, todavía están por construir (Fase 0).
+3. Borrar por completo la cuenta de un tutor (Auth) requiere herramientas de administración; desde la web solo se desactiva. El texto del correo de acceso es la plantilla de "restablecer contraseña" de Firebase (se puede personalizar en la consola).
 4. Al eliminar un NNA, sus sesiones quedan guardadas de forma seudónima hasta que exista la herramienta de retención.

@@ -7,19 +7,10 @@ abstract interface class AuthService {
   /// Current signed-in user id, or null.
   String? get currentUserId;
 
-  /// Name given at sign-up, if any (used to prefill the tutor profile).
-  String? get currentDisplayName;
-
   /// Emits the user id on sign-in and null on sign-out.
   Stream<String?> get userChanges;
 
   Future<void> signIn({required String email, required String password});
-
-  Future<void> register({
-    required String email,
-    required String password,
-    required String displayName,
-  });
 
   Future<void> sendPasswordReset({required String email});
 
@@ -74,21 +65,10 @@ class NotConfiguredAuthService implements AuthService {
   String? get currentUserId => null;
 
   @override
-  String? get currentDisplayName => null;
-
-  @override
   Stream<String?> get userChanges => Stream.value(null);
 
   @override
   Future<void> signIn({required String email, required String password}) async => throw _failure;
-
-  @override
-  Future<void> register({
-    required String email,
-    required String password,
-    required String displayName,
-  }) async =>
-      throw _failure;
 
   @override
   Future<void> sendPasswordReset({required String email}) async => throw _failure;

@@ -12,25 +12,11 @@ class FirebaseAuthService implements AuthService {
   String? get currentUserId => _auth.currentUser?.uid;
 
   @override
-  String? get currentDisplayName => _auth.currentUser?.displayName;
-
-  @override
   Stream<String?> get userChanges => _auth.authStateChanges().map((u) => u?.uid);
 
   @override
   Future<void> signIn({required String email, required String password}) =>
       _guard(() => _auth.signInWithEmailAndPassword(email: email, password: password));
-
-  @override
-  Future<void> register({
-    required String email,
-    required String password,
-    required String displayName,
-  }) =>
-      _guard(() async {
-        final cred = await _auth.createUserWithEmailAndPassword(email: email, password: password);
-        await cred.user?.updateDisplayName(displayName);
-      });
 
   @override
   Future<void> sendPasswordReset({required String email}) => _guard(() async {

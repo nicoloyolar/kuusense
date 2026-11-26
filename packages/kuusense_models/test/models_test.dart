@@ -95,4 +95,14 @@ void main() {
       isFalse,
     );
   });
+
+  test('tutors created before email/active existed read as active', () {
+    final old = Tutor.fromMap('u', {'displayName': 'Ana', 'type': 'teacher', 'createdAtMs': 1});
+    expect(old.active, isTrue);
+    expect(old.email, '');
+    final t = Tutor(uid: 'u', displayName: 'Ana', type: TutorType.family, createdAtMs: 1, email: 'a@b.cl', active: false);
+    final back = Tutor.fromMap('u', t.toMap());
+    expect(back.email, 'a@b.cl');
+    expect(back.active, isFalse);
+  });
 }

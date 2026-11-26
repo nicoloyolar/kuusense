@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:collection';
-import 'dart:io';
 
 import 'package:emotibit/emotibit.dart';
 import 'package:flutter/foundation.dart';
 import 'package:kuusense_firebase/kuusense_firebase.dart';
 
 import 'background_recording.dart';
+import 'device_scanner.dart';
 import 'session_upload_queue.dart';
 
 export 'session_upload_queue.dart' show UploadState;
@@ -54,17 +54,11 @@ class RecordingController extends ChangeNotifier {
   bool get isConnected =>
       connection?.status == EmotiBitConnectionStatus.connected;
 
-  Future<List<DiscoveredEmotiBit>> scan({String? manualIp}) {
-    final ip = manualIp?.trim();
-    return EmotiBitHost.discover(
-      targets: (ip == null || ip.isEmpty) ? null : [InternetAddress(ip)],
-    );
-  }
-
   Future<void> connect(DiscoveredEmotiBit device) async {
     await disconnect();
     deviceLostMessage = null;
     _attach(await EmotiBitHost.connect(device));
+    unawaited(LastEmotiBit.save(device));
   }
 
   void _attach(EmotiBitConnection conn) {

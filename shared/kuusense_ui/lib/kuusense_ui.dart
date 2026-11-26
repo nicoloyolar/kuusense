@@ -2,7 +2,10 @@
 /// and form validators. Source of truth: shared/design/tokens.json.
 library;
 
+export 'src/avatars.dart';
 export 'src/brand.dart';
+export 'src/child_form.dart';
+export 'src/dialogs.dart';
 export 'src/format.dart';
 export 'src/generated/tokens.g.dart';
 export 'src/session_ui.dart';

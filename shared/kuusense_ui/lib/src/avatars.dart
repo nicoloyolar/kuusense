@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:kuusense_ui/kuusense_ui.dart';
+import 'generated/tokens.g.dart';
 
 /// Predefined child avatars (no photos). Placeholder art built from icons and
 /// brand colors until the client provides illustrations; the ids are what is
@@ -52,6 +52,7 @@ class AvatarPicker extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Wrap(
+      alignment: WrapAlignment.center,
       spacing: KuuSpacing.sm,
       runSpacing: KuuSpacing.sm,
       children: [

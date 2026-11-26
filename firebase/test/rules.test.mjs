@@ -16,6 +16,7 @@ let env;
 
 // alice: owner of NNA c1 · carol: linked to c1 · bob: tutor, not linked
 // dave: researcher (staff) · eve: account without tutor profile
+// frank: admin (staff) · gina: deactivated tutor, still listed in c1
 const user = (uid, provider = 'password') => env.authenticatedContext(uid, {
   email: `${uid}@test.cl`, firebase: { sign_in_provider: provider },
 });
@@ -24,6 +25,8 @@ const carol = () => user('carol');
 const bob = () => user('bob');
 const dave = () => user('dave');
 const eve = () => user('eve');
+const frank = () => user('frank');
+const gina = () => user('gina');
 
 const HOUR = 60 * 60 * 1000;
 const C1 = 'c1';
@@ -63,8 +66,10 @@ beforeEach(async () => {
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     for (const uid of ['alice', 'bob', 'carol']) await setDoc(doc(db, 'tutors', uid), tutor());
+    await setDoc(doc(db, 'tutors', 'gina'), tutor({ email: 'gina@test.cl', active: false }));
     await setDoc(doc(db, 'staff', 'dave'), { role: 'researcher' });
-    await setDoc(doc(db, 'children', C1), child({ tutorUids: ['alice', 'carol'] }));
+    await setDoc(doc(db, 'staff', 'frank'), { role: 'admin' });
+    await setDoc(doc(db, 'children', C1), child({ tutorUids: ['alice', 'carol', 'gina'] }));
     await setDoc(doc(db, 'children', C1, 'private', 'profile'), profile());
     await setDoc(doc(db, 'children', C2), child({ code: 'N-WXYZ', ownerUid: 'bob', tutorUids: ['bob'] }));
     await setDoc(doc(db, 'children', C1, 'sessions', 's1'), session());
@@ -76,26 +81,49 @@ beforeEach(async () => {
 });
 
 describe('tutors', () => {
-  test('a user creates and reads their own tutor profile', async () => {
-    await assertSucceeds(setDoc(doc(eve().firestore(), 'tutors', 'eve'), tutor({ type: 'teacher' })));
-    await assertSucceeds(getDoc(doc(eve().firestore(), 'tutors', 'eve')));
-  });
-  test('cannot read or write another tutor profile', async () => {
-    await assertFails(getDoc(doc(bob().firestore(), 'tutors', 'alice')));
-    await assertFails(setDoc(doc(bob().firestore(), 'tutors', 'alice'), tutor()));
+  const newTutor = (over = {}) => tutor({ email: 'eve@test.cl', active: true, ...over });
+  const tutorRef = (ctx, uid) => doc(ctx.firestore(), 'tutors', uid);
+
+  test('only an admin creates tutors, with email and active', async () => {
+    await assertFails(setDoc(tutorRef(eve(), 'eve'), newTutor()));
+    await assertFails(setDoc(tutorRef(dave(), 'eve'), newTutor()));
+    await assertFails(setDoc(tutorRef(alice(), 'eve'), newTutor()));
+    await assertFails(setDoc(tutorRef(frank(), 'eve'), tutor()));
+    await assertFails(setDoc(tutorRef(frank(), 'eve'), newTutor({ active: false })));
+    await assertSucceeds(setDoc(tutorRef(frank(), 'eve'), newTutor()));
   });
   test('rejects unknown tutor type and extra fields', async () => {
-    await assertFails(setDoc(doc(eve().firestore(), 'tutors', 'eve'), tutor({ type: 'boss' })));
-    await assertFails(setDoc(doc(eve().firestore(), 'tutors', 'eve'), tutor({ rut: '1-9' })));
+    await assertFails(setDoc(tutorRef(frank(), 'eve'), newTutor({ type: 'boss' })));
+    await assertFails(setDoc(tutorRef(frank(), 'eve'), newTutor({ rut: '1-9' })));
   });
-  test('anonymous users cannot become tutors', async () => {
-    const anon = user('anon', 'anonymous');
-    await assertFails(setDoc(doc(anon.firestore(), 'tutors', 'anon'), tutor()));
+  test('a tutor reads their profile and edits only name and type', async () => {
+    await assertSucceeds(getDoc(tutorRef(alice(), 'alice')));
+    await assertSucceeds(updateDoc(tutorRef(alice(), 'alice'), { displayName: 'Ana M.', type: 'teacher' }));
+    await assertFails(updateDoc(tutorRef(alice(), 'alice'), { active: false }));
+    await assertFails(updateDoc(tutorRef(alice(), 'alice'), { email: 'x@test.cl' }));
   });
-  test('staff reads tutor profiles; staff docs are read-only for clients', async () => {
-    await assertSucceeds(getDoc(doc(dave().firestore(), 'tutors', 'alice')));
+  test('a deactivated tutor reads their profile but cannot edit it', async () => {
+    await assertSucceeds(getDoc(tutorRef(gina(), 'gina')));
+    await assertFails(updateDoc(tutorRef(gina(), 'gina'), { displayName: 'G' }));
+    await assertFails(updateDoc(tutorRef(gina(), 'gina'), { active: true }));
+  });
+  test('an admin edits and deactivates tutors, but never deletes them', async () => {
+    await assertSucceeds(updateDoc(tutorRef(frank(), 'alice'), { displayName: 'Ana', email: 'a@test.cl' }));
+    await assertSucceeds(updateDoc(tutorRef(frank(), 'bob'), { active: false }));
+    await assertFails(updateDoc(tutorRef(frank(), 'bob'), { createdAtMs: 9 }));
+    await assertFails(deleteDoc(tutorRef(frank(), 'bob')));
+  });
+  test('admins list tutors; researchers and other tutors cannot read them', async () => {
+    await assertSucceeds(getDocs(collection(frank().firestore(), 'tutors')));
+    await assertFails(getDocs(collection(dave().firestore(), 'tutors')));
+    await assertFails(getDoc(tutorRef(dave(), 'alice')));
+    await assertFails(getDoc(tutorRef(bob(), 'alice')));
+    await assertFails(setDoc(tutorRef(bob(), 'alice'), tutor()));
+  });
+  test('staff docs are read-only for clients', async () => {
     await assertSucceeds(getDoc(doc(dave().firestore(), 'staff', 'dave')));
     await assertFails(setDoc(doc(eve().firestore(), 'staff', 'eve'), { role: 'admin' }));
+    await assertFails(setDoc(doc(frank().firestore(), 'staff', 'eve'), { role: 'admin' }));
     await assertFails(getDoc(doc(eve().firestore(), 'staff', 'dave')));
   });
 });
@@ -182,17 +210,82 @@ describe('unlinking and deleting', () => {
     await assertSucceeds(updateDoc(childRef(alice()), { tutorUids: arrayRemove('carol') }));
     await assertFails(updateDoc(childRef(alice()), { tutorUids: arrayRemove('alice') }));
   });
-  test('nobody adds tutors directly', async () => {
+  test('tutors do not add tutors directly', async () => {
     await assertFails(updateDoc(childRef(alice()), { tutorUids: arrayUnion('bob') }));
     await assertFails(updateDoc(childRef(bob()), { tutorUids: arrayUnion('bob') }));
   });
   test('only the owner deletes the child', async () => {
     await assertFails(deleteDoc(childRef(carol())));
+    await assertFails(deleteDoc(childRef(dave())));
     const ctx = alice();
     const b = writeBatch(ctx.firestore());
     b.delete(profileRef(ctx));
     b.delete(childRef(ctx));
     await assertSucceeds(b.commit());
+  });
+});
+
+describe('admin manages children (NNA)', () => {
+  const register = (ctx, id, data, prof = profile()) => {
+    const b = writeBatch(ctx.firestore());
+    b.set(childRef(ctx, id), data);
+    b.set(profileRef(ctx, id), prof);
+    return b.commit();
+  };
+
+  test('an admin registers a child for an existing tutor', async () => {
+    await assertSucceeds(register(frank(), 'new', child({ ownerUid: 'bob', tutorUids: ['bob'] })));
+  });
+  test('the owner must be an existing tutor and the only linked one', async () => {
+    await assertFails(register(frank(), 'new', child({ ownerUid: 'nobody', tutorUids: ['nobody'] })));
+    await assertFails(register(frank(), 'new', child({ ownerUid: 'bob', tutorUids: ['bob', 'carol'] })));
+  });
+  test('researchers cannot register children', async () => {
+    await assertFails(register(dave(), 'new', child({ ownerUid: 'bob', tutorUids: ['bob'] })));
+  });
+  test('admins read every private profile; researchers never', async () => {
+    await assertSucceeds(getDoc(profileRef(frank())));
+    await assertSucceeds(getDocs(collectionGroup(frank().firestore(), 'private')));
+    await assertFails(getDocs(collectionGroup(dave().firestore(), 'private')));
+    await assertFails(getDocs(collectionGroup(alice().firestore(), 'private')));
+  });
+  test('an admin links tutors and changes the owner, who stays linked', async () => {
+    await assertSucceeds(updateDoc(childRef(frank()), { tutorUids: ['alice', 'carol', 'bob'] }));
+    await assertSucceeds(updateDoc(childRef(frank()), { ownerUid: 'bob', tutorUids: ['bob'] }));
+    await assertFails(updateDoc(childRef(frank()), { ownerUid: 'carol', tutorUids: ['bob'] }));
+    await assertFails(updateDoc(childRef(frank()), { tutorUids: ['bob', 'bob'] }));
+  });
+  test('an admin edits the profile but never code or consent', async () => {
+    await assertSucceeds(updateDoc(childRef(frank()), { birthYear: 2016, dunnQuadrant: 'avoiding' }));
+    await assertSucceeds(updateDoc(profileRef(frank()), { displayName: 'Tomás' }));
+    await assertFails(updateDoc(childRef(frank()), { code: 'N-ZZZZ' }));
+    await assertFails(updateDoc(childRef(frank()), { consentConfirmedAtMs: 5 }));
+  });
+  test('an admin deletes a child with its profile', async () => {
+    const ctx = frank();
+    const b = writeBatch(ctx.firestore());
+    b.delete(profileRef(ctx));
+    b.delete(childRef(ctx));
+    await assertSucceeds(b.commit());
+  });
+});
+
+describe('deactivated tutors', () => {
+  test('see nothing of the children they are still listed in', async () => {
+    await assertFails(getDoc(childRef(gina())));
+    await assertFails(getDoc(profileRef(gina())));
+    await assertFails(getDocs(query(collection(gina().firestore(), 'children'),
+      where('tutorUids', 'array-contains', 'gina'))));
+    await assertFails(getDoc(sessionRef(gina())));
+  });
+  test('cannot register children, record or edit', async () => {
+    const ctx = gina();
+    const b = writeBatch(ctx.firestore());
+    b.set(childRef(ctx, 'new'), child({ ownerUid: 'gina', tutorUids: ['gina'] }));
+    b.set(profileRef(ctx, 'new'), profile());
+    await assertFails(b.commit());
+    await assertFails(setDoc(sessionRef(gina(), 's9'), session({ createdByUid: 'gina' })));
+    await assertFails(updateDoc(childRef(gina()), { birthYear: 2017 }));
   });
 });
 

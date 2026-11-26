@@ -3,11 +3,14 @@ rules_version = '2';
 // Data model: packages/kuusense_models/lib/src/models.dart
 //
 // Who is who:
-//  - Tutor: email/password account with a tutors/{uid} doc. Sees only the
-//    children (NNA) whose tutorUids contain them.
-//  - Staff (researcher / admin): staff/{uid} doc created by admin tooling.
-//    Reads the pseudonymous part of every child and all sessions; never the
-//    private profile, and never writes child data.
+//  - Admin: staff/{uid} with role 'admin' (created by admin tooling). Creates
+//    and edits tutors and children (NNA), links tutors to children and reads
+//    the children's private profile (nickname, avatar).
+//  - Researcher: staff/{uid} with role 'researcher'. Reads the pseudonymous
+//    part of every child and all sessions; never names, never writes.
+//  - Tutor: account with an active tutors/{uid} doc, created by an admin.
+//    Sees and records only the children whose tutorUids contain them, and
+//    registers children of their own. A deactivated tutor sees nothing.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -19,9 +22,16 @@ service cloud.firestore {
       return /databases/$(database)/documents/$(collection)/$(id);
     }
     function isStaff() { return signedIn() && exists(docPath('staff', request.auth.uid)); }
-    function isTutor() { return hasAccount() && exists(docPath('tutors', request.auth.uid)); }
+    function isAdmin() {
+      return isStaff() && get(docPath('staff', request.auth.uid)).data.role == 'admin';
+    }
+    // Active tutor (a missing `active` field means active).
+    function isTutor() {
+      return hasAccount() && exists(docPath('tutors', request.auth.uid))
+        && get(docPath('tutors', request.auth.uid)).data.get('active', true) == true;
+    }
     function isLinked(childId) {
-      return signedIn() && request.auth.uid in get(docPath('children', childId)).data.tutorUids;
+      return isTutor() && request.auth.uid in get(docPath('children', childId)).data.tutorUids;
     }
     function nowMs() { return request.time.toMillis(); }
     // Same alphabet as the app: no 0/O, 1/I.
@@ -30,18 +40,28 @@ service cloud.firestore {
     // ---------------------------------------------------------------- tutors
     match /tutors/{tutorId} {
       function validTutor(d) {
-        return d.keys().hasOnly(['displayName', 'type', 'createdAtMs'])
+        return d.keys().hasOnly(['displayName', 'type', 'email', 'active', 'createdAtMs'])
           && d.keys().hasAll(['displayName', 'type', 'createdAtMs'])
           && d.displayName is string && d.displayName.size() >= 1 && d.displayName.size() <= 60
           && d.type in ['family', 'teacher', 'therapist']
+          && d.get('email', '') is string && d.get('email', '').size() <= 254
+          && d.get('active', true) is bool
           && d.createdAtMs is int;
       }
       function isSelf() { return hasAccount() && request.auth.uid == tutorId; }
 
-      allow read: if isSelf() || isStaff();
-      allow create: if isSelf() && validTutor(request.resource.data);
-      allow update: if isSelf() && validTutor(request.resource.data)
-        && request.resource.data.createdAtMs == resource.data.createdAtMs;
+      // Tutors' names and emails: the tutor and admins (not researchers).
+      allow read: if isSelf() || isAdmin();
+      // Only admins create tutors (the app has no sign-up).
+      allow create: if isAdmin() && validTutor(request.resource.data)
+        && request.resource.data.email.size() >= 3
+        && request.resource.data.active == true;
+      // Admins edit any field but the creation date; an active tutor edits
+      // only their own name and type.
+      allow update: if validTutor(request.resource.data)
+        && request.resource.data.createdAtMs == resource.data.createdAtMs
+        && (isAdmin() || (isTutor() && isSelf()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'type'])));
       // Account deletion goes through admin tooling (data retention policy).
       allow delete: if false;
     }
@@ -66,7 +86,7 @@ service cloud.firestore {
           && d.tutorUids is list
           && d.consentConfirmedAtMs is int && d.createdAtMs is int;
       }
-      function linked() { return signedIn() && request.auth.uid in resource.data.tutorUids; }
+      function linked() { return isTutor() && request.auth.uid in resource.data.tutorUids; }
       function isOwner() { return signedIn() && request.auth.uid == resource.data.ownerUid; }
       function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
       function oldTutors() { return resource.data.tutorUids; }
@@ -86,7 +106,7 @@ service cloud.firestore {
       }
       // The owner unlinks other tutors, never themself.
       function ownerUnlinks() {
-        return isOwner() && changed().hasOnly(['tutorUids'])
+        return linked() && isOwner() && changed().hasOnly(['tutorUids'])
           && noDuplicates(newTutors())
           && newTutors().hasAll([resource.data.ownerUid])
           && oldTutors().hasAll(newTutors())
@@ -106,18 +126,31 @@ service cloud.firestore {
           && !existsAfter(invitePath);
       }
 
+      // An admin edits the profile, the linked tutors and the owner (who must
+      // stay linked). Code, consent and creation date never change.
+      function adminEdits() {
+        return isAdmin()
+          && changed().hasOnly(['birthYear', 'dunnQuadrant', 'tutorUids', 'ownerUid'])
+          && validChild(request.resource.data)
+          && noDuplicates(newTutors())
+          && newTutors().hasAll([request.resource.data.ownerUid]);
+      }
+
       // Written against resource.data so `tutorUids array-contains uid` list
       // queries are allowed.
       allow read: if isStaff() || linked();
-      allow create: if isTutor()
-        && validChild(request.resource.data)
+      // A tutor registers a child as its owner; an admin registers it for an
+      // existing tutor.
+      allow create: if validChild(request.resource.data)
         && !('lastInviteCode' in request.resource.data)
-        && request.resource.data.ownerUid == request.auth.uid
-        && request.resource.data.tutorUids == [request.auth.uid];
-      allow update: if editsProfile() || leaves() || ownerUnlinks() || joinsWithInvite();
-      allow delete: if isOwner();
+        && request.resource.data.tutorUids == [request.resource.data.ownerUid]
+        && ((isTutor() && request.resource.data.ownerUid == request.auth.uid)
+            || (isAdmin() && exists(docPath('tutors', request.resource.data.ownerUid))));
+      allow update: if editsProfile() || leaves() || ownerUnlinks() || joinsWithInvite()
+        || adminEdits();
+      allow delete: if (isTutor() && isOwner()) || isAdmin();
 
-      // Identifying data: linked tutors only (not staff).
+      // Identifying data: linked tutors and admins (never researchers).
       match /private/{docId} {
         function validProfile(d) {
           return docId == 'profile'
@@ -127,15 +160,15 @@ service cloud.firestore {
             && d.avatarId is string && d.avatarId.size() >= 1 && d.avatarId.size() <= 40;
         }
 
-        allow read: if isLinked(childId);
-        allow update: if isLinked(childId) && validProfile(request.resource.data);
+        allow read: if isLinked(childId) || isAdmin();
+        allow update: if (isLinked(childId) || isAdmin()) && validProfile(request.resource.data);
         // getAfter: the child and its profile are created in one batch.
-        allow create: if signedIn()
-          && request.auth.uid in getAfter(docPath('children', childId)).data.tutorUids
-          && validProfile(request.resource.data);
-        // Deleted together with the child, before it (owner only).
-        allow delete: if signedIn()
-          && request.auth.uid == get(docPath('children', childId)).data.ownerUid;
+        allow create: if validProfile(request.resource.data)
+          && ((isTutor() && request.auth.uid in getAfter(docPath('children', childId)).data.tutorUids)
+              || isAdmin());
+        // Deleted together with the child (owner or admin).
+        allow delete: if isAdmin() || (isTutor()
+          && request.auth.uid == get(docPath('children', childId)).data.ownerUid);
       }
 
       match /sessions/{sessionId} {
@@ -200,6 +233,11 @@ service cloud.firestore {
     // Staff read sessions across all children (collection-group query).
     match /{path=**}/sessions/{sessionId} {
       allow read: if isStaff();
+    }
+
+    // Admins list every child's private profile (collection-group query).
+    match /{path=**}/private/{docId} {
+      allow read: if isAdmin();
     }
 
     // ---------------------------------------------------------------- invites

@@ -168,21 +168,12 @@ class AuthScaffold extends StatelessWidget {
   }
 }
 
-void showAuthHelp(BuildContext context) => showDialog<void>(
-  context: context,
-  builder: (ctx) => AlertDialog(
-    title: const Text('¿Necesitas ayuda?'),
-    // TODO(content): official support channel from the client.
-    content: const Text(
-      'Si tienes problemas para ingresar, escríbenos al canal de soporte de KúuSense.',
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(ctx),
-        child: const Text('Entendido'),
-      ),
-    ],
-  ),
+// TODO(content): official support channel from the client.
+void showAuthHelp(BuildContext context) => showKuuInfo(
+  context,
+  title: '¿Necesitas ayuda?',
+  message: 'Si tienes problemas para ingresar, escríbenos al canal de soporte de KúuSense.',
+  icon: Icons.support_agent_rounded,
 );
 
 /// Error line under a form; hidden when [message] is null.

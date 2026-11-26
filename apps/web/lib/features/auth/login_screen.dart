@@ -189,8 +189,8 @@ class _LoginFormState extends State<_LoginForm> {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
-                onPressed: () => showDialog<void>(
-                  context: context,
+                onPressed: () => showKuuDialog<void>(
+                  context,
                   builder: (_) => _ForgotPasswordDialog(
                     auth: widget.auth,
                     initialEmail: _email.text.trim(),
@@ -273,58 +273,53 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
-      title: Text(_sent ? 'Revisa tu correo' : 'Recuperar contraseña'),
-      content: SizedBox(
-        width: 380,
-        child: _sent
-            ? Text(
-                'Si existe una cuenta para ${_email.text.trim()}, te enviamos un enlace '
-                'para crear una nueva contraseña.',
-              )
-            : Form(
-                key: _form,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('Te enviaremos un enlace a tu correo.'),
-                    const SizedBox(height: KuuSpacing.md),
-                    TextFormField(
-                      controller: _email,
-                      autofocus: true,
-                      decoration: const InputDecoration(labelText: 'Correo'),
-                      validator: KuuValidators.email,
-                      onFieldSubmitted: (_) => _submit(),
-                    ),
-                    if (_error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: KuuSpacing.md),
-                        child: Text(
-                          _error!,
-                          style: TextStyle(color: theme.colorScheme.error),
-                        ),
-                      ),
-                  ],
+    if (_sent) {
+      return KuuDialog(
+        icon: Icons.mark_email_read_outlined,
+        tone: KuuDialogTone.success,
+        title: 'Revisa tu correo',
+        message:
+            'Si existe una cuenta para ${_email.text.trim()}, te enviamos un enlace '
+            'para crear una nueva contraseña.',
+        primaryLabel: 'Entendido',
+        onPrimary: () => Navigator.pop(context),
+      );
+    }
+    return KuuDialog(
+      icon: Icons.lock_reset_rounded,
+      title: 'Recuperar contraseña',
+      message: 'Te enviaremos un enlace a tu correo para crear una nueva.',
+      content: Form(
+        key: _form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _email,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Correo',
+                prefixIcon: Icon(Icons.mail_outline_rounded),
+              ),
+              validator: KuuValidators.email,
+              onFieldSubmitted: (_) => _submit(),
+            ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: KuuSpacing.md),
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: theme.colorScheme.error),
                 ),
               ),
+          ],
+        ),
       ),
-      actions: _sent
-          ? [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cerrar'),
-              ),
-            ]
-          : [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancelar'),
-              ),
-              TextButton(
-                onPressed: _busy ? null : _submit,
-                child: const Text('Enviar enlace'),
-              ),
-            ],
+      primaryLabel: 'Enviar enlace',
+      onPrimary: _submit,
+      busy: _busy,
+      secondaryLabel: 'Cancelar',
+      onSecondary: () => Navigator.pop(context),
     );
   }
 }

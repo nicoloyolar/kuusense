@@ -156,10 +156,6 @@ class _Header extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    if (s.isDemo) ...[
-                      const SizedBox(width: KuuSpacing.sm),
-                      const KuuDemoBadge(),
-                    ],
                   ],
                 ),
                 Text(
@@ -461,9 +457,7 @@ class _Files extends StatelessWidget {
     final files = session.files.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
     final String emptyText;
-    if (session.isDemo) {
-      emptyText = 'Sesión de demostración: no tiene archivos de señales.';
-    } else if (session.status == SessionStatus.uploaded) {
+    if (session.status == SessionStatus.uploaded) {
       emptyText = 'La sesión no tiene archivos.';
     } else {
       emptyText =

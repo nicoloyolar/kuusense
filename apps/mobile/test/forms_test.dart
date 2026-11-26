@@ -118,21 +118,21 @@ void main() {
   group('tutor profile', () {
     testWidgets('requires a tutor type, then saves', (tester) async {
       (String, TutorType)? saved;
-      await pumpPushed(
+      final results = await pumpPushed(
         tester,
         TutorProfileScreen(
-          isOnboarding: true,
           initialName: 'Ana',
           onSave: (name, type) async => saved = (name, type),
         ),
       );
-      await tapButton(tester, 'Continuar');
+      await tapButton(tester, 'Guardar');
       expect(find.text('Elige una opción'), findsOneWidget);
       expect(saved, isNull);
 
       await tester.tap(find.text('Docente'));
-      await tapButton(tester, 'Continuar');
+      await tapButton(tester, 'Guardar');
       expect(saved, ('Ana', TutorType.teacher));
+      expect(results, [null]);
     });
   });
 }

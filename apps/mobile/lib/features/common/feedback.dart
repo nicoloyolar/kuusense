@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:kuusense_firebase/kuusense_firebase.dart';
+import 'package:kuusense_ui/kuusense_ui.dart';
 
 const genericErrorMessage = 'No se pudo completar la acción. Revisa tu conexión e inténtalo de nuevo.';
 
@@ -23,34 +24,24 @@ Future<bool> runWithFeedback(BuildContext context, Future<void> Function() actio
   }
 }
 
-/// Yes/no dialog; resolves to true only when the user confirms.
+/// Yes/no dialog with the KúuSense standard ([showKuuConfirm]); resolves to
+/// true only when the user confirms. [destructive] paints it as a danger.
 Future<bool> confirmDialog(
   BuildContext context, {
   required String title,
   required String message,
   required String confirmLabel,
   bool destructive = false,
-}) async {
-  final scheme = Theme.of(context).colorScheme;
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(title),
-      content: Text(message),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-        FilledButton(
-          style: destructive
-              ? FilledButton.styleFrom(backgroundColor: scheme.error, foregroundColor: scheme.onError)
-              : null,
-          onPressed: () => Navigator.pop(ctx, true),
-          child: Text(confirmLabel),
-        ),
-      ],
-    ),
-  );
-  return ok ?? false;
-}
+  IconData? icon,
+}) =>
+    showKuuConfirm(
+      context,
+      title: title,
+      message: message,
+      confirmLabel: confirmLabel,
+      icon: icon ?? (destructive ? Icons.warning_amber_rounded : Icons.help_outline_rounded),
+      tone: destructive ? KuuDialogTone.danger : KuuDialogTone.primary,
+    );
 
 /// Centered spinner used while a stream has no data yet.
 class LoadingView extends StatelessWidget {

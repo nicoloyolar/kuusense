@@ -8,18 +8,15 @@
 // The session id comes from the folder name, so importing the same folder
 // twice updates the same session instead of duplicating it.
 //
+// The child (NNA) must already exist: children are only registered from the
+// apps, by a tutor.
+//
 // Usage (from firebase/), with Application Default Credentials:
-//   Existing child:
-//     node admin/import-session.mjs --project kuusense-test --dir <recording folder> --child <childId>
-//   New test child linked to a tutor account:
-//     node admin/import-session.mjs --project kuusense-test --dir <recording folder> \
-//       --owner tutor@correo.cl --name "Prueba" --birth-year 1995
+//   node admin/import-session.mjs --project kuusense-test --dir <recording folder> --child <childId>
 // Optional: --place home|school|therapy|other  --activity <SessionActivity name>
 import { readFileSync, existsSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
-import { randomInt } from 'node:crypto';
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 
@@ -32,7 +29,6 @@ const STREAM_TAGS = new Set([
   'AX', 'AY', 'AZ', 'GX', 'GY', 'GZ', 'MX', 'MY', 'MZ',
   'HR', 'BI', 'SA', 'SF', 'SR',
 ]);
-const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, all) => {
@@ -43,8 +39,7 @@ const args = Object.fromEntries(
     return acc;
   }, []),
 );
-const { project, dir, child, owner, name } = args;
-const birthYear = Number(args['birth-year']);
+const { project, dir, child } = args;
 const place = args.place ?? 'other';
 const activity = args.activity ?? 'rest';
 
@@ -52,17 +47,13 @@ function fail(msg) {
   console.error(msg);
   process.exit(1);
 }
-if (!project || !dir || (!child && !(owner && name && birthYear))) {
-  fail('Uso: node admin/import-session.mjs --project kuusense-test --dir <carpeta> '
-    + '(--child <id> | --owner <correo> --name <nombre> --birth-year <año>)');
+if (!project || !dir || !child) {
+  fail('Uso: node admin/import-session.mjs --project kuusense-test --dir <carpeta> --child <id>');
 }
 if (!ALLOWED_PROJECTS[project]) fail(`Proyecto no permitido: ${project}`);
 const folder = resolve(dir);
 for (const f of FILES) {
   if (!existsSync(join(folder, f))) fail(`Falta ${f} en ${folder}`);
-}
-if (!child && (birthYear < 1990 || birthYear > new Date().getFullYear())) {
-  fail('El año de nacimiento debe estar entre 1990 y el año actual.');
 }
 
 // ---------------------------------------------------------------- read the recording
@@ -93,30 +84,10 @@ initializeApp({ credential: applicationDefault(), projectId: project, storageBuc
 const db = getFirestore();
 const bucket = getStorage().bucket();
 
-let childId = child;
-let ownerUid;
-if (childId) {
-  const snap = await db.collection('children').doc(childId).get();
-  if (!snap.exists) fail(`No existe el NNA ${childId}`);
-  ownerUid = snap.get('ownerUid');
-} else {
-  ownerUid = (await getAuth().getUserByEmail(owner)).uid;
-  const ref = db.collection('children').doc();
-  const now = Date.now();
-  const code = 'N-' + Array.from({ length: 4 }, () => CODE_CHARS[randomInt(CODE_CHARS.length)]).join('');
-  await ref.set({
-    code,
-    birthYear,
-    dunnQuadrant: null,
-    ownerUid,
-    tutorUids: [ownerUid],
-    consentConfirmedAtMs: now,
-    createdAtMs: now,
-  });
-  await ref.collection('private').doc('profile').set({ displayName: name, avatarId: 'star' });
-  childId = ref.id;
-  console.log(`NNA de prueba creado: ${childId} (${code}), vinculado a ${owner}`);
-}
+const childId = child;
+const childSnap = await db.collection('children').doc(childId).get();
+if (!childSnap.exists) fail(`No existe el NNA ${childId}`);
+const ownerUid = childSnap.get('ownerUid');
 
 const sessionId = 'rec-' + basename(folder).replace(/[^A-Za-z0-9-]/g, '-');
 const dirPath = `children/${childId}/sessions/${sessionId}`;

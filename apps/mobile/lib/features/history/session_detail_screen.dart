@@ -88,7 +88,6 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
                               runSpacing: KuuSpacing.sm,
                               children: [
                                 KuuOutcomeBadge(outcome: SessionOutcome.of(s)),
-                                if (s.isDemo) const KuuDemoBadge(),
                               ],
                             ),
                           ],

@@ -572,10 +572,6 @@ class KuuSessionTile extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (s.isDemo) ...[
-                          const SizedBox(width: KuuSpacing.sm),
-                          const KuuDemoBadge(),
-                        ],
                       ],
                     ),
                   if (title != null) const SizedBox(height: 2),
@@ -820,32 +816,6 @@ class _TimelineBar extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-}
-
-/// Small "Demo" tag for fictional demo data, so it is never mistaken for real.
-class KuuDemoBadge extends StatelessWidget {
-  const KuuDemoBadge({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: KuuSpacing.sm,
-        vertical: 2,
-      ),
-      decoration: BoxDecoration(
-        color: KuuColor.stateAlert.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(KuuRadius.pill),
-      ),
-      child: Text(
-        'Demo',
-        style: theme.textTheme.labelSmall?.copyWith(
-          fontWeight: FontWeight.w700,
-        ),
-      ),
     );
   }
 }

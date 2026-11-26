@@ -4,23 +4,19 @@ import 'package:kuusense_ui/kuusense_ui.dart';
 
 import '../common/feedback.dart';
 
-/// Tutor profile form. Shown once after sign-up ([isOnboarding]) and later
-/// from the home menu to edit it.
+/// The tutor edits their own name and type (the account and email are
+/// managed by an admin on the web platform).
 class TutorProfileScreen extends StatefulWidget {
   const TutorProfileScreen({
     super.key,
     required this.onSave,
     this.initialName,
     this.initialType,
-    this.isOnboarding = false,
-    this.onSignOut,
   });
 
   final Future<void> Function(String name, TutorType type) onSave;
   final String? initialName;
   final TutorType? initialType;
-  final bool isOnboarding;
-  final VoidCallback? onSignOut;
 
   @override
   State<TutorProfileScreen> createState() => _TutorProfileScreenState();
@@ -47,21 +43,14 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     final ok = await runWithFeedback(context, () => widget.onSave(_name.text.trim(), _type!));
     if (!mounted) return;
     setState(() => _busy = false);
-    if (ok && !widget.isOnboarding) Navigator.of(context).pop();
+    if (ok) Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.isOnboarding ? 'Tu perfil' : 'Editar perfil'),
-        automaticallyImplyLeading: !widget.isOnboarding,
-        actions: [
-          if (widget.onSignOut != null)
-            TextButton(onPressed: widget.onSignOut, child: const Text('Cerrar sesión')),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Editar perfil')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -73,16 +62,6 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (widget.isOnboarding) ...[
-                      Text('¡Hola! Cuéntanos un poco de ti', style: theme.textTheme.headlineSmall),
-                      const SizedBox(height: KuuSpacing.sm),
-                      Text(
-                        'Así sabrán quién eres los demás tutores del niño o niña.',
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                      const SizedBox(height: KuuSpacing.lg),
-                    ],
                     TextFormField(
                       controller: _name,
                       textCapitalization: TextCapitalization.words,
@@ -122,7 +101,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                       child: _busy
                           ? const SizedBox.square(
                               dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
-                          : Text(widget.isOnboarding ? 'Continuar' : 'Guardar'),
+                          : const Text('Guardar'),
                     ),
                   ],
                 ),

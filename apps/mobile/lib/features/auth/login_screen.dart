@@ -4,7 +4,6 @@ import 'package:kuusense_ui/kuusense_ui.dart';
 
 import 'auth_scaffold.dart';
 import 'forgot_password_screen.dart';
-import 'register_screen.dart';
 
 /// Tutor login (email + password). Navigation after a successful sign-in is
 /// driven by [AuthService.userChanges] at the app root, not by this screen.
@@ -124,16 +123,14 @@ class _LoginScreenState extends State<LoginScreen> {
         AuthErrorText(_error),
         const SizedBox(height: KuuSpacing.md),
         AuthSubmitButton(label: 'Ingresar', busy: _busy, onPressed: _submit),
-        const SizedBox(height: KuuSpacing.sm),
-        OutlinedButton(
-          onPressed: _busy
-              ? null
-              : () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => RegisterScreen(auth: widget.auth),
-                  ),
-                ),
-          child: const Text('Crear una cuenta'),
+        const SizedBox(height: KuuSpacing.md),
+        Text(
+          'Las cuentas de tutor las crea el equipo de KúuSense. Si es tu primera vez, '
+          'usa el enlace del correo que te llegó para crear tu contraseña.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
         ),
         // Planned (REQUISITOS CU-6, P3): sign in with fingerprint / Face ID.
       ],

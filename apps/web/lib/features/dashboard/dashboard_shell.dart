@@ -2,14 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:kuusense_firebase/kuusense_firebase.dart';
 import 'package:kuusense_ui/kuusense_ui.dart';
 
+import '../admin/children_admin_page.dart';
+import '../admin/tutors_page.dart';
 import '../common/page_title.dart';
 
 import 'children_page.dart';
 import 'sessions_page.dart';
 
+/// Sections of the platform. The last two are admin-only maintainers.
+enum _Section {
+  home('Inicio', Icons.space_dashboard_outlined),
+  sessions('Sesiones', Icons.monitor_heart_outlined),
+  tutors('Tutores', Icons.group_outlined),
+  children('NNA', Icons.child_care_rounded);
+
+  const _Section(this.label, this.icon);
+  final String label;
+  final IconData icon;
+
+  bool get adminOnly => this == tutors || this == children;
+}
+
 /// Signed-in staff layout: header, section navigation (rail on wide screens,
-/// bottom bar on narrow ones) and the NNA / sessions sections. Holds the live
-/// data streams so both sections share them.
+/// bottom bar on narrow ones) and the sections. Holds the live data streams
+/// so every section shares them.
 class DashboardShell extends StatefulWidget {
   const DashboardShell({
     super.key,
@@ -29,15 +45,28 @@ class _DashboardShellState extends State<DashboardShell> {
   late final Stream<List<Child>> _children = widget.repo.watchAllChildren();
   late final Stream<List<RecordingSession>> _sessions = widget.repo
       .watchAllSessions();
+  // Names and tutors: admins only (the rules deny them to researchers).
+  late final Stream<List<Tutor>> _tutors = _isAdmin
+      ? widget.repo.watchAllTutors()
+      : Stream.value(const <Tutor>[]);
+  late final Stream<Map<String, ChildProfile>> _profiles = _isAdmin
+      ? widget.repo.watchAllChildProfiles()
+      : Stream.value(const <String, ChildProfile>{});
 
-  int _section = 0;
+  bool get _isAdmin => widget.staff.isAdmin;
+  late final List<_Section> _sections = [
+    for (final s in _Section.values)
+      if (_isAdmin || !s.adminOnly) s,
+  ];
+
+  _Section _section = _Section.home;
 
   /// NNA the sessions section is filtered to (null = all).
   String? _childFilter;
 
   void _openChildSessions(String childId) => setState(() {
     _childFilter = childId;
-    _section = 1;
+    _section = _Section.sessions;
   });
 
   @override
@@ -46,46 +75,79 @@ class _DashboardShellState extends State<DashboardShell> {
       stream: _children,
       builder: (context, childSnap) => StreamBuilder<List<RecordingSession>>(
         stream: _sessions,
-        builder: (context, sessionSnap) {
-          final error = childSnap.error ?? sessionSnap.error;
-          final loading = !childSnap.hasData || !sessionSnap.hasData;
-          final children = childSnap.data ?? const <Child>[];
-          final sessions = sessionSnap.data ?? const <RecordingSession>[];
+        builder: (context, sessionSnap) => StreamBuilder<List<Tutor>>(
+          stream: _tutors,
+          builder: (context, tutorSnap) =>
+              StreamBuilder<Map<String, ChildProfile>>(
+                stream: _profiles,
+                builder: (context, profileSnap) {
+                  final error =
+                      childSnap.error ??
+                      sessionSnap.error ??
+                      tutorSnap.error ??
+                      profileSnap.error;
+                  final loading =
+                      !childSnap.hasData ||
+                      !sessionSnap.hasData ||
+                      !tutorSnap.hasData ||
+                      !profileSnap.hasData;
+                  final children = childSnap.data ?? const <Child>[];
+                  final sessions =
+                      sessionSnap.data ?? const <RecordingSession>[];
+                  final tutors = tutorSnap.data ?? const <Tutor>[];
+                  final profiles =
+                      profileSnap.data ?? const <String, ChildProfile>{};
 
-          final Widget body;
-          if (error != null) {
-            body = _Message(
-              icon: Icons.error_outline_rounded,
-              text: 'No se pudieron cargar los datos.\n$error',
-            );
-          } else if (loading) {
-            body = const Center(child: CircularProgressIndicator());
-          } else if (_section == 0) {
-            body = ChildrenPage(
-              children: children,
-              sessions: sessions,
-              onOpen: _openChildSessions,
-            );
-          } else {
-            body = SessionsPage(
-              repo: widget.repo,
-              children: children,
-              sessions: sessions,
-              childFilter: _childFilter,
-              onFilter: (id) => setState(() => _childFilter = id),
-            );
-          }
-          return PageTitle(
-            _section == 0 ? 'Home' : 'Sesiones',
-            child: _Frame(
-              staff: widget.staff,
-              onSignOut: widget.auth.signOut,
-              section: _section,
-              onSection: (i) => setState(() => _section = i),
-              child: body,
-            ),
-          );
-        },
+                  final Widget body;
+                  if (error != null) {
+                    body = _Message(
+                      icon: Icons.error_outline_rounded,
+                      text: 'No se pudieron cargar los datos.\n$error',
+                    );
+                  } else if (loading) {
+                    body = const Center(child: CircularProgressIndicator());
+                  } else {
+                    body = switch (_section) {
+                      _Section.home => ChildrenPage(
+                        children: children,
+                        sessions: sessions,
+                        onOpen: _openChildSessions,
+                      ),
+                      _Section.sessions => SessionsPage(
+                        repo: widget.repo,
+                        children: children,
+                        sessions: sessions,
+                        childFilter: _childFilter,
+                        onFilter: (id) => setState(() => _childFilter = id),
+                      ),
+                      _Section.tutors => TutorsPage(
+                        repo: widget.repo,
+                        tutors: tutors,
+                        children: children,
+                      ),
+                      _Section.children => ChildrenAdminPage(
+                        repo: widget.repo,
+                        children: children,
+                        profiles: profiles,
+                        tutors: tutors,
+                        sessions: sessions,
+                      ),
+                    };
+                  }
+                  return PageTitle(
+                    _section.label,
+                    child: _Frame(
+                      staff: widget.staff,
+                      onSignOut: widget.auth.signOut,
+                      sections: _sections,
+                      section: _sections.indexOf(_section),
+                      onSection: (i) => setState(() => _section = _sections[i]),
+                      child: body,
+                    ),
+                  );
+                },
+              ),
+        ),
       ),
     );
   }
@@ -95,6 +157,7 @@ class _Frame extends StatelessWidget {
   const _Frame({
     required this.staff,
     required this.onSignOut,
+    required this.sections,
     required this.section,
     required this.onSection,
     required this.child,
@@ -102,14 +165,10 @@ class _Frame extends StatelessWidget {
 
   final StaffMember staff;
   final VoidCallback onSignOut;
+  final List<_Section> sections;
   final int section;
   final ValueChanged<int> onSection;
   final Widget child;
-
-  static const _destinations = [
-    (icon: Icons.child_care_rounded, label: 'NNA'),
-    (icon: Icons.monitor_heart_outlined, label: 'Sesiones'),
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -149,7 +208,7 @@ class _Frame extends StatelessWidget {
           selectedIndex: section,
           onDestinationSelected: onSection,
           destinations: [
-            for (final d in _destinations)
+            for (final d in sections)
               NavigationDestination(icon: Icon(d.icon), label: d.label),
           ],
         ),
@@ -164,7 +223,7 @@ class _Frame extends StatelessWidget {
             onDestinationSelected: onSection,
             labelType: NavigationRailLabelType.all,
             destinations: [
-              for (final d in _destinations)
+              for (final d in sections)
                 NavigationRailDestination(
                   icon: Icon(d.icon),
                   label: Text(d.label),

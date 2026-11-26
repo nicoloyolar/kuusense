@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:kuusense_models/kuusense_models.dart';
 
+import 'auth/tutor_accounts.dart';
+
 /// Why an invite code could not be used.
 enum InviteFailureReason { notFound, expired, alreadyLinked }
 
@@ -50,20 +52,16 @@ class KuusenseRepository {
 
   // ------------------------------------------------------------ tutor
 
-  /// The signed-in user's tutor profile, or null until they create it.
+  /// The signed-in user's tutor profile, or null when an admin has not
+  /// created one for this account.
   Stream<Tutor?> watchMyTutorProfile() => _tutors
       .doc(uid)
       .snapshots()
       .map((d) => d.exists ? Tutor.fromMap(d.id, d.data()!) : null);
 
-  Future<void> saveMyTutorProfile({required String displayName, required TutorType type}) async {
-    final ref = _tutors.doc(uid);
-    final existing = await ref.get();
-    final createdAtMs = existing.exists ? Tutor.fromMap(uid, existing.data()!).createdAtMs : _now;
-    await ref.set(
-      Tutor(uid: uid, displayName: displayName.trim(), type: type, createdAtMs: createdAtMs).toMap(),
-    );
-  }
+  /// The tutor edits their own name and type (the rest is admin-only).
+  Future<void> saveMyTutorProfile({required String displayName, required TutorType type}) =>
+      _tutors.doc(uid).update({'displayName': displayName.trim(), 'type': type.name});
 
   // ------------------------------------------------------------ children (tutor side)
 
@@ -83,14 +81,16 @@ class KuusenseRepository {
       .snapshots()
       .map((d) => d.exists ? ChildProfile.fromMap(d.data()!) : null);
 
-  /// Registers a child with the signed-in tutor as owner. [consentConfirmed]
-  /// must be true: the tutor confirms they have the caregiver's consent.
+  /// Registers a child. A tutor registers it for themself; an admin passes
+  /// the owning tutor as [ownerUid]. [consentConfirmed] must be true: whoever
+  /// registers confirms they have the caregiver's consent.
   Future<Child> registerChild({
     required String displayName,
     required String avatarId,
     required int birthYear,
     required bool consentConfirmed,
     DunnQuadrant? dunnQuadrant,
+    String? ownerUid,
   }) async {
     if (!consentConfirmed) {
       throw ArgumentError.value(consentConfirmed, 'consentConfirmed', 'consent is required');
@@ -102,8 +102,8 @@ class KuusenseRepository {
       code: Child.generateCode(),
       birthYear: birthYear,
       dunnQuadrant: dunnQuadrant,
-      ownerUid: uid,
-      tutorUids: [uid],
+      ownerUid: ownerUid ?? uid,
+      tutorUids: [ownerUid ?? uid],
       consentConfirmedAtMs: now,
       createdAtMs: now,
     );
@@ -118,6 +118,21 @@ class KuusenseRepository {
   Future<void> updateChild(String childId, {required int birthYear, DunnQuadrant? dunnQuadrant}) =>
       _children.doc(childId).update({'birthYear': birthYear, 'dunnQuadrant': dunnQuadrant?.name});
 
+  /// Saves the child form (profile and private part) in one batch. Linked
+  /// tutors and admins.
+  Future<void> editChild(
+    String childId, {
+    required String displayName,
+    required String avatarId,
+    required int birthYear,
+    DunnQuadrant? dunnQuadrant,
+  }) async {
+    final batch = db.batch()
+      ..update(_children.doc(childId), {'birthYear': birthYear, 'dunnQuadrant': dunnQuadrant?.name})
+      ..set(_profile(childId), ChildProfile(displayName: displayName.trim(), avatarId: avatarId).toMap());
+    await batch.commit();
+  }
+
   Future<void> updateChildProfile(String childId, ChildProfile profile) =>
       _profile(childId).set(profile.toMap());
 
@@ -129,8 +144,8 @@ class KuusenseRepository {
   Future<void> unlinkTutor(String childId, String tutorUid) =>
       _children.doc(childId).update({'tutorUids': FieldValue.arrayRemove([tutorUid])});
 
-  /// Owner only. Sessions are research data and stay (pseudonymous) until
-  /// the retention policy removes them with admin tooling.
+  /// Owner or admin. Sessions are research data and stay (pseudonymous)
+  /// until the retention policy removes them with admin tooling.
   Future<void> deleteChild(String childId) async {
     final batch = db.batch()
       ..delete(_profile(childId))
@@ -194,6 +209,65 @@ class KuusenseRepository {
     }
     return invite.childId;
   }
+
+  // ------------------------------------------------------------ admin (web)
+
+  /// Every tutor, newest first. Admin only.
+  Stream<List<Tutor>> watchAllTutors() => _tutors
+      .orderBy('createdAtMs', descending: true)
+      .snapshots()
+      .map((s) => s.docs.map((d) => Tutor.fromMap(d.id, d.data())).toList());
+
+  /// Private profile (nickname, avatar) of every child, by child id. Admin only.
+  Stream<Map<String, ChildProfile>> watchAllChildProfiles() => db
+      .collectionGroup(Collections.childPrivate)
+      .snapshots()
+      .map((s) => {
+            for (final d in s.docs)
+              if (d.id == Collections.childProfileDoc && d.reference.parent.parent != null)
+                d.reference.parent.parent!.id: ChildProfile.fromMap(d.data()),
+          });
+
+  /// Creates the sign-in account and the tutor profile. The tutor gets an
+  /// email to choose their own password. Admin only. Throws `AuthFailure`
+  /// (e.g. the email already has an account).
+  Future<Tutor> createTutor({
+    required String email,
+    required String displayName,
+    required TutorType type,
+  }) async {
+    final cleanEmail = email.trim().toLowerCase();
+    final newUid = await createTutorAccount(cleanEmail);
+    final tutor = Tutor(
+      uid: newUid,
+      displayName: displayName.trim(),
+      type: type,
+      createdAtMs: _now,
+      email: cleanEmail,
+    );
+    await _tutors.doc(newUid).set(tutor.toMap());
+    return tutor;
+  }
+
+  /// Admin only. The sign-in email itself is not changed here.
+  Future<void> updateTutor(String tutorUid, {required String displayName, required TutorType type}) =>
+      _tutors.doc(tutorUid).update({'displayName': displayName.trim(), 'type': type.name});
+
+  /// Admin only. A deactivated tutor keeps their links but cannot see or
+  /// record anything until reactivated.
+  Future<void> setTutorActive(String tutorUid, bool active) =>
+      _tutors.doc(tutorUid).update({'active': active});
+
+  /// Sends the "choose your password" email again. Admin only.
+  Future<void> resendTutorAccess(String email) => sendAccessEmail(email);
+
+  /// Admin only: sets which tutors follow a child and who owns it (the owner
+  /// is always kept in [tutorUids]).
+  Future<void> setChildTutors(String childId, {required String ownerUid, required List<String> tutorUids}) =>
+      _children.doc(childId).update({
+        'ownerUid': ownerUid,
+        'tutorUids': {ownerUid, ...tutorUids}.toList(),
+      });
 
   // ------------------------------------------------------------ staff (web)
 

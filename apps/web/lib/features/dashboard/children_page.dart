@@ -256,10 +256,6 @@ class _ChildCard extends StatelessWidget {
                               letterSpacing: 0.5,
                             ),
                           ),
-                          if (child.isDemo) ...[
-                            const SizedBox(width: KuuSpacing.sm),
-                            const KuuDemoBadge(),
-                          ],
                         ],
                       ),
                       const SizedBox(height: 2),
@@ -352,7 +348,7 @@ class _Empty extends StatelessWidget {
             ),
             const SizedBox(height: KuuSpacing.xs),
             Text(
-              'Los tutores los registran desde la app móvil.',
+              'Se registran desde la app móvil de los tutores o, para el administrador, en la sección NNA.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

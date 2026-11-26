@@ -6,7 +6,7 @@ import 'dart:math';
 /// tutors/{uid}                                 Tutor
 /// staff/{uid}                                  StaffMember (written by admin tooling only)
 /// children/{childId}                           Child          research-visible, pseudonymous
-/// children/{childId}/private/profile           ChildProfile   tutors only
+/// children/{childId}/private/profile           ChildProfile   linked tutors and admins
 /// children/{childId}/sessions/{sessionId}      RecordingSession
 /// invites/{code}                               Invite
 /// ```
@@ -52,14 +52,17 @@ enum TutorType {
       };
 }
 
-/// A caregiver account (family member, teacher or therapist). Email and
-/// password live only in Firebase Auth; they are not copied here.
+/// A caregiver account (family member, teacher or therapist), created by an
+/// admin from the web platform. The password lives only in Firebase Auth;
+/// [email] is copied here so admins can list tutors.
 class Tutor {
   Tutor({
     required this.uid,
     required this.displayName,
     required this.type,
     required this.createdAtMs,
+    this.email = '',
+    this.active = true,
   });
 
   final String uid;
@@ -69,16 +72,26 @@ class Tutor {
   final TutorType type;
   final int createdAtMs;
 
+  /// Sign-in email (empty for tutors created before it was stored).
+  final String email;
+
+  /// A deactivated tutor cannot see or record anything.
+  final bool active;
+
   factory Tutor.fromMap(String uid, Map<String, dynamic> m) => Tutor(
         uid: uid,
         displayName: m['displayName'] as String? ?? '',
         type: TutorType.values.asNameMap()[m['type']] ?? TutorType.family,
         createdAtMs: _ms(m['createdAtMs']),
+        email: m['email'] as String? ?? '',
+        active: m['active'] as bool? ?? true,
       );
 
   Map<String, dynamic> toMap() => {
         'displayName': displayName,
         'type': type.name,
+        'email': email,
+        'active': active,
         'createdAtMs': createdAtMs,
       };
 }
@@ -95,8 +108,8 @@ enum StaffRole {
       };
 }
 
-/// Research team / KúuSense admin. These docs are created with admin tooling,
-/// never from the apps.
+/// Research team / KúuSense admin. These docs are created with admin tooling
+/// (`make staff`), never from the apps.
 class StaffMember {
   StaffMember({required this.uid, required this.role});
   final String uid;
@@ -106,6 +119,8 @@ class StaffMember {
         uid: uid,
         role: StaffRole.values.asNameMap()[m['role']] ?? StaffRole.researcher,
       );
+
+  bool get isAdmin => role == StaffRole.admin;
 
   Map<String, dynamic> toMap() => {'role': role.name};
 }
@@ -142,10 +157,6 @@ class Child {
   });
 
   final String id;
-
-  /// Ids of fictional demo children (firebase/admin/demo-data.mjs).
-  static const demoIdPrefix = 'demo-';
-  bool get isDemo => id.startsWith(demoIdPrefix);
 
   /// Pseudonymous code shown to researchers, e.g. `N-4F7Q`.
   final String code;
@@ -190,7 +201,7 @@ class Child {
   static String generateCode([Random? rng]) => 'N-${_randomCode(4, rng)}';
 }
 
-/// The private part of a child, visible only to linked tutors.
+/// The private part of a child, visible only to linked tutors and admins.
 class ChildProfile {
   ChildProfile({required this.displayName, required this.avatarId});
 
@@ -513,9 +524,6 @@ class RecordingSession {
 
   /// Ended by itself (device lost or app closed) instead of by the tutor.
   bool get isIncomplete => endReason != null && endReason != SessionEndReason.stopped;
-
-  /// Belongs to a fictional demo child.
-  bool get isDemo => childId.startsWith(Child.demoIdPrefix);
 
   Duration get duration =>
       Duration(milliseconds: (endedAtMs ?? DateTime.now().millisecondsSinceEpoch) - startedAtMs);

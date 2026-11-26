@@ -7,7 +7,7 @@ export PATH := $(if $(wildcard $(JAVA21)),$(JAVA21):,)$(PATH)
 # LAN IP of this computer (used by physical phones to reach the emulators).
 LAN_IP ?= $(shell ipconfig getifaddr en0 2>/dev/null)
 
-.PHONY: help setup emulators simulator tokens emotibit scan monitor record web mobile mobile-device mobile-test web-test deploy-rules-test deploy-web-test staff demo-load demo-clear test test-protocol test-apps test-rules e2e analyze
+.PHONY: help setup emulators simulator tokens emotibit scan monitor record web mobile mobile-device mobile-test web-test deploy-rules-test deploy-web-test staff tutor test test-protocol test-apps test-rules e2e analyze
 
 help:
 	@echo "make setup          Install all dependencies"
@@ -25,9 +25,8 @@ help:
 	@echo "make web-test       Run the web platform against kuusense-test"
 	@echo "make staff EMAIL=..  Give an account admin/researcher access (kuusense-test)"
 	@echo "make deploy-web-test  Publish the web platform to kuusense-test (Hosting)"
-	@echo "make demo-load        Load fictional demo data into kuusense-test"
-	@echo "make demo-clear       Remove all demo data from kuusense-test"
-	@echo "make import-session DIR=.. (CHILD=id | NAME=.. BIRTH_YEAR=..)  Upload a terminal recording to kuusense-test"
+	@echo "make tutor EMAIL=.. NAME=..  Enable an existing account as tutor in kuusense-test"
+	@echo "make import-session DIR=.. CHILD=id  Upload a terminal recording to an existing NNA in kuusense-test"
 	@echo "make deploy-rules-test  Publish security rules and indexes to kuusense-test"
 	@echo "make test           Run all automated tests"
 	@echo "make e2e            End-to-end tutor flow on a simulator (needs make emulators)"
@@ -81,24 +80,22 @@ web-test:
 staff:
 	cd firebase && node admin/set-staff.mjs --project kuusense-test --email $(EMAIL) --role $(or $(ROLE),admin) $(if $(PASSWORD),--password $(PASSWORD),)
 
+# Enable an EXISTING account as tutor (new tutors are created from the web):
+#   make tutor EMAIL=a@b.cl NAME="Ana" [TYPE=family|teacher|therapist]
+tutor:
+	cd firebase && node admin/set-tutor.mjs --project kuusense-test --email $(EMAIL) $(if $(NAME),--name "$(NAME)",) --type $(or $(TYPE),family)
+
 # Build the web platform against kuusense-test and publish it to Firebase Hosting.
 deploy-web-test:
 	cd apps/web && flutter build web --release --dart-define=USE_EMULATORS=false
 	firebase deploy --project test --only hosting
 
-# Fictional demo data in kuusense-test, linked to OWNER's account (default: the admin).
-demo-load:
-	cd firebase && node admin/demo-data.mjs --project kuusense-test --owner $(or $(OWNER),nicolas.iloyolar@gmail.com) --tutors $(or $(TUTORS),vale.lamilla@gmail.com)
-
-demo-clear:
-	cd firebase && node admin/demo-data.mjs --project kuusense-test --clear
-
 # Upload a recording made with `make record` to kuusense-test, as the app would.
-# Existing child: make import-session DIR=recordings/<fecha> CHILD=<childId>
-# New test child: make import-session DIR=recordings/<fecha> NAME="Prueba" BIRTH_YEAR=1995 [OWNER=correo]
+# The NNA must already exist (registered from the apps):
+#   make import-session DIR=recordings/<fecha> CHILD=<childId>
 import-session:
 	$(EMOTIBIT) preview $(abspath $(DIR))
-	cd firebase && node admin/import-session.mjs --project kuusense-test --dir $(abspath $(DIR)) $(if $(CHILD),--child $(CHILD),--owner $(or $(OWNER),nicolas.iloyolar@gmail.com) --name "$(NAME)" --birth-year $(BIRTH_YEAR))
+	cd firebase && node admin/import-session.mjs --project kuusense-test --dir $(abspath $(DIR)) --child $(CHILD)
 
 # Publish Firestore/Storage rules and indexes to kuusense-test.
 deploy-rules-test:
