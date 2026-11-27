@@ -7,6 +7,9 @@ abstract interface class AuthService {
   /// Current signed-in user id, or null.
   String? get currentUserId;
 
+  /// Email of the signed-in account, or null.
+  String? get currentEmail;
+
   /// Emits the user id on sign-in and null on sign-out.
   Stream<String?> get userChanges;
 
@@ -39,19 +42,25 @@ class AuthFailure implements Exception {
 
   /// User-facing message in Spanish (Chile).
   String get message => switch (reason) {
-        AuthFailureReason.invalidCredentials => 'Correo o contraseña incorrectos.',
-        AuthFailureReason.emailAlreadyInUse => 'Ya existe una cuenta con ese correo.',
+        AuthFailureReason.invalidCredentials =>
+          'Correo o contraseña incorrectos.',
+        AuthFailureReason.emailAlreadyInUse =>
+          'Ya existe una cuenta con ese correo.',
         AuthFailureReason.weakPassword => 'La contraseña es muy débil.',
         AuthFailureReason.invalidEmail => 'El correo no es válido.',
         AuthFailureReason.userDisabled => 'Esta cuenta está deshabilitada.',
-        AuthFailureReason.tooManyRequests => 'Demasiados intentos. Espera un momento e inténtalo de nuevo.',
+        AuthFailureReason.tooManyRequests =>
+          'Demasiados intentos. Espera un momento e inténtalo de nuevo.',
         AuthFailureReason.network => 'Sin conexión. Revisa tu internet.',
-        AuthFailureReason.notConfigured => 'El inicio de sesión aún no está disponible.',
-        AuthFailureReason.unknown => 'Ocurrió un error inesperado. Inténtalo de nuevo.',
+        AuthFailureReason.notConfigured =>
+          'El inicio de sesión aún no está disponible.',
+        AuthFailureReason.unknown =>
+          'Ocurrió un error inesperado. Inténtalo de nuevo.',
       };
 
   @override
-  String toString() => 'AuthFailure($reason${detail == null ? '' : ': $detail'})';
+  String toString() =>
+      'AuthFailure($reason${detail == null ? '' : ': $detail'})';
 }
 
 /// Placeholder until Firebase Auth is integrated: every action fails with
@@ -65,13 +74,19 @@ class NotConfiguredAuthService implements AuthService {
   String? get currentUserId => null;
 
   @override
+  String? get currentEmail => null;
+
+  @override
   Stream<String?> get userChanges => Stream.value(null);
 
   @override
-  Future<void> signIn({required String email, required String password}) async => throw _failure;
+  Future<void> signIn(
+          {required String email, required String password}) async =>
+      throw _failure;
 
   @override
-  Future<void> sendPasswordReset({required String email}) async => throw _failure;
+  Future<void> sendPasswordReset({required String email}) async =>
+      throw _failure;
 
   @override
   Future<void> signOut() async {}

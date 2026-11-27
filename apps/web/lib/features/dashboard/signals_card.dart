@@ -21,7 +21,9 @@ class SignalsCard extends StatefulWidget {
 }
 
 class _SignalsCardState extends State<SignalsCard> {
-  late Future<List<SignalPoint>> _points = widget.repo.loadSignals(widget.session);
+  late Future<List<SignalPoint>> _points = widget.repo.loadSignals(
+    widget.session,
+  );
   String? _loadedPath;
 
   @override
@@ -54,16 +56,25 @@ class _SignalsCardState extends State<SignalsCard> {
           children: [
             Row(
               children: [
-                Icon(Icons.monitor_heart_outlined, size: 20, color: theme.colorScheme.primary),
+                Icon(
+                  Icons.monitor_heart_outlined,
+                  size: 20,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: KuuSpacing.sm),
-                Text('Señales',
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  'Señales',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const Spacer(),
                 if (st != null)
                   Text(
                     _quality(st),
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
               ],
             ),
@@ -78,46 +89,78 @@ class _SignalsCardState extends State<SignalsCard> {
                   );
                 }
                 if (snap.hasError) {
-                  return _Note('No se pudieron cargar las señales: ${snap.error}');
+                  return _Note(
+                    'No se pudieron cargar las señales: ${snap.error}',
+                  );
                 }
                 final points = snap.data!;
                 if (points.isEmpty) {
-                  return const _Note('Esta sesión no tiene resumen de señales.');
+                  return const _Note(
+                    'Esta sesión no tiene resumen de señales.',
+                  );
                 }
                 final start = s.startedAtMs;
-                final end = max(s.endedAtMs ?? points.last.atMs, points.last.atMs + 1000);
+                final end = max(
+                  s.endedAtMs ?? points.last.atMs,
+                  points.last.atMs + 1000,
+                );
                 final events = [for (final e in s.events) e.atMs];
-                Widget row(String label, String figure, Color color, double? Function(SignalPoint) pick,
-                        {String? detail}) =>
-                    _SignalRow(
-                      label: label,
-                      figure: figure,
-                      detail: detail,
-                      color: color,
-                      points: points,
-                      pick: pick,
-                      startMs: start,
-                      endMs: end,
-                      events: events,
-                    );
+                Widget row(
+                  String label,
+                  String figure,
+                  Color color,
+                  double? Function(SignalPoint) pick, {
+                  String? detail,
+                }) => _SignalRow(
+                  label: label,
+                  figure: figure,
+                  detail: detail,
+                  color: color,
+                  points: points,
+                  pick: pick,
+                  startMs: start,
+                  endMs: end,
+                  events: events,
+                );
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    row('Frecuencia cardíaca', _range(st?.heartRate, 0, 'lpm'), KuuColor.statePreCrisis,
-                        (p) => p.heartRate),
-                    row('Sudoración (EDA)', _range(st?.eda, 1, 'µS'), KuuColor.brandPrimary, (p) => p.eda,
-                        detail: st == null ? null : '${st.scrCount} respuestas detectadas'),
-                    row('Temperatura de la piel', _range(st?.temperature, 1, '°C'), KuuColor.brandAccent,
-                        (p) => p.temperature),
-                    row('Movimiento', 'intensidad (g)', KuuColor.brandSecondary, (p) => p.motion),
+                    row(
+                      'Frecuencia cardíaca',
+                      _range(st?.heartRate, 0, 'lpm'),
+                      KuuColor.statePreCrisis,
+                      (p) => p.heartRate,
+                    ),
+                    row(
+                      'Sudoración (EDA)',
+                      _range(st?.eda, 1, 'µS'),
+                      KuuColor.brandPrimary,
+                      (p) => p.eda,
+                      detail: st == null
+                          ? null
+                          : '${st.scrCount} respuestas detectadas',
+                    ),
+                    row(
+                      'Temperatura de la piel',
+                      _range(st?.temperature, 1, '°C'),
+                      KuuColor.brandAccent,
+                      (p) => p.temperature,
+                    ),
+                    row(
+                      'Movimiento',
+                      'intensidad (g)',
+                      KuuColor.brandSecondary,
+                      (p) => p.motion,
+                    ),
                     _TimeAxis(startMs: start, endMs: end),
                     if (events.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: KuuSpacing.sm),
                         child: Text(
                           'Las líneas verticales son los eventos marcados.',
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                   ],
@@ -130,7 +173,8 @@ class _SignalsCardState extends State<SignalsCard> {
     );
   }
 
-  static String _n(double v, int digits) => v.toStringAsFixed(digits).replaceAll('.', ',');
+  static String _n(double v, int digits) =>
+      v.toStringAsFixed(digits).replaceAll('.', ',');
 
   static String _range(SignalRange? r, int digits, String unit) => r == null
       ? '—'
@@ -139,7 +183,9 @@ class _SignalsCardState extends State<SignalsCard> {
   static String _quality(SessionStats st) {
     final parts = ['${_n(st.lossPercent, 1)} % paquetes perdidos'];
     if (st.batteryStart != null && st.batteryEnd != null) {
-      parts.add('batería ${_n(st.batteryStart!, 0)} → ${_n(st.batteryEnd!, 0)} %');
+      parts.add(
+        'batería ${_n(st.batteryStart!, 0)} → ${_n(st.batteryEnd!, 0)} %',
+      );
     }
     return parts.join(' · ');
   }
@@ -152,8 +198,12 @@ class _Note extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Text(text,
-        style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant));
+    return Text(
+      text,
+      style: theme.textTheme.bodyMedium?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
   }
 }
 
@@ -191,9 +241,21 @@ class _SignalRow extends StatelessWidget {
             spacing: KuuSpacing.sm,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Text(label, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
-              Text(figure, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
-              if (detail != null) Text('· $detail', style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+              Text(
+                label,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                figure,
+                style: theme.textTheme.bodySmall?.copyWith(color: muted),
+              ),
+              if (detail != null)
+                Text(
+                  '· $detail',
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
             ],
           ),
           const SizedBox(height: KuuSpacing.xs),
@@ -209,7 +271,9 @@ class _SignalRow extends StatelessWidget {
                 color: color,
                 grid: theme.colorScheme.outlineVariant,
                 eventColor: KuuColor.stateAlert,
-                labelStyle: theme.textTheme.labelSmall?.copyWith(color: muted) ?? const TextStyle(),
+                labelStyle:
+                    theme.textTheme.labelSmall?.copyWith(color: muted) ??
+                    const TextStyle(),
               ),
             ),
           ),
@@ -243,7 +307,12 @@ class _LinePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final plot = Rect.fromLTWH(_labelWidth, 2, size.width - _labelWidth, size.height - 4);
+    final plot = Rect.fromLTWH(
+      _labelWidth,
+      2,
+      size.width - _labelWidth,
+      size.height - 4,
+    );
     final span = max(1, endMs - startMs);
     double x(int ms) => plot.left + (ms - startMs) / span * plot.width;
 
@@ -252,14 +321,21 @@ class _LinePainter extends CustomPainter {
       ..color = grid
       ..strokeWidth = 1;
     canvas.drawLine(plot.bottomLeft, plot.bottomRight, gridPaint);
-    canvas.drawLine(plot.topLeft, plot.topRight, gridPaint..color = grid.withValues(alpha: 0.4));
+    canvas.drawLine(
+      plot.topLeft,
+      plot.topRight,
+      gridPaint..color = grid.withValues(alpha: 0.4),
+    );
 
     for (final e in events) {
       if (e < startMs || e > endMs) continue;
-      canvas.drawLine(Offset(x(e), plot.top), Offset(x(e), plot.bottom),
-          Paint()
-            ..color = eventColor
-            ..strokeWidth = 1.5);
+      canvas.drawLine(
+        Offset(x(e), plot.top),
+        Offset(x(e), plot.bottom),
+        Paint()
+          ..color = eventColor
+          ..strokeWidth = 1.5,
+      );
     }
     if (values.isEmpty) {
       _label(canvas, 'sin datos', Offset(plot.left + 8, plot.center.dy - 6));
@@ -296,8 +372,15 @@ class _LinePainter extends CustomPainter {
         ..strokeJoin = StrokeJoin.round,
     );
 
-    String fmt(double v) =>
-        v.toStringAsFixed(v.abs() >= 100 ? 0 : v.abs() >= 10 ? 1 : 2).replaceAll('.', ',');
+    String fmt(double v) => v
+        .toStringAsFixed(
+          v.abs() >= 100
+              ? 0
+              : v.abs() >= 10
+              ? 1
+              : 2,
+        )
+        .replaceAll('.', ',');
     _label(canvas, fmt(hi), Offset(0, plot.top - 2));
     _label(canvas, fmt(lo), Offset(0, plot.bottom - 12));
   }
@@ -312,7 +395,10 @@ class _LinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_LinePainter old) =>
-      old.points != points || old.events != events || old.color != color || old.grid != grid;
+      old.points != points ||
+      old.events != events ||
+      old.color != color ||
+      old.grid != grid;
 }
 
 class _TimeAxis extends StatelessWidget {
@@ -322,7 +408,9 @@ class _TimeAxis extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final style = theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final style = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
     final mid = startMs + (endMs - startMs) ~/ 2;
     return Padding(
       padding: const EdgeInsets.only(left: _LinePainter._labelWidth),

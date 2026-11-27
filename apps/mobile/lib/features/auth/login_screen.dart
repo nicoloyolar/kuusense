@@ -129,8 +129,8 @@ class _LoginScreenState extends State<LoginScreen> {
           'usa el enlace del correo que te llegó para crear tu contraseña.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         // Planned (REQUISITOS CU-6, P3): sign in with fingerprint / Face ID.
       ],

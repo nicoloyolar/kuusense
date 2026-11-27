@@ -7,7 +7,7 @@ export PATH := $(if $(wildcard $(JAVA21)),$(JAVA21):,)$(PATH)
 # LAN IP of this computer (used by physical phones to reach the emulators).
 LAN_IP ?= $(shell ipconfig getifaddr en0 2>/dev/null)
 
-.PHONY: help setup emulators simulator tokens emotibit scan monitor record web mobile mobile-device mobile-test web-test deploy-rules-test deploy-web-test staff tutor test test-protocol test-apps test-rules e2e analyze
+.PHONY: help setup emulators simulator tokens emotibit scan monitor record web mobile mobile-device mobile-test apk-test web-test deploy-rules-test deploy-web-test staff tutor test test-protocol test-apps test-rules e2e analyze
 
 help:
 	@echo "make setup          Install all dependencies"
@@ -22,6 +22,7 @@ help:
 	@echo "make mobile         Run the tutor app (simulator/emulator)"
 	@echo "make mobile-device  Run the app on a physical phone (uses LAN_IP=$(LAN_IP))"
 	@echo "make mobile-test    Run the app against the real project kuusense-test"
+	@echo "make apk-test       Build the release APK against kuusense-test"
 	@echo "make web-test       Run the web platform against kuusense-test"
 	@echo "make staff EMAIL=..  Give an account admin/researcher access (kuusense-test)"
 	@echo "make deploy-web-test  Publish the web platform to kuusense-test (Hosting)"
@@ -74,20 +75,32 @@ mobile-test:
 	cd apps/mobile && flutter run --dart-define=USE_EMULATORS=false
 
 web-test:
-	cd apps/web && flutter run -d chrome --web-port 5050 --dart-define=USE_EMULATORS=false
+	cd apps/web && flutter run -d chrome --web-port 5050 --dart-define=USE_EMULATORS=false --dart-define=TEST_PASSWORD=$(TEST_PASSWORD)
 
 # Grant web-platform access: make staff EMAIL=a@b.cl [ROLE=researcher] [PASSWORD=x]
 staff:
-	cd firebase && node admin/set-staff.mjs --project kuusense-test --email $(EMAIL) --role $(or $(ROLE),admin) $(if $(PASSWORD),--password $(PASSWORD),)
+	cd firebase && node admin/set-staff.mjs --project kuusense-test --email $(EMAIL) --role $(or $(ROLE),admin) $(if $(NAME),--name "$(NAME)",) $(if $(PASSWORD),--password $(PASSWORD),)
+
+# Test period only: same password on every kuusense-test account. The
+# kuusense-test web build also gives it to new accounts (TEST_PASSWORD).
+# Never use it for production.
+TEST_PASSWORD ?= 123456KS
+test-password:
+	cd firebase && node admin/set-test-password.mjs --project kuusense-test --password '$(TEST_PASSWORD)'
 
 # Enable an EXISTING account as tutor (new tutors are created from the web):
 #   make tutor EMAIL=a@b.cl NAME="Ana" [TYPE=family|teacher|therapist]
 tutor:
 	cd firebase && node admin/set-tutor.mjs --project kuusense-test --email $(EMAIL) $(if $(NAME),--name "$(NAME)",) --type $(or $(TYPE),family)
 
+# Build the Android release APK against kuusense-test (install it on a phone).
+apk-test:
+	cd apps/mobile && flutter build apk --release --dart-define=USE_EMULATORS=false
+	@echo "APK: apps/mobile/build/app/outputs/flutter-apk/app-release.apk"
+
 # Build the web platform against kuusense-test and publish it to Firebase Hosting.
 deploy-web-test:
-	cd apps/web && flutter build web --release --dart-define=USE_EMULATORS=false
+	cd apps/web && flutter build web --release --dart-define=USE_EMULATORS=false --dart-define=TEST_PASSWORD=$(TEST_PASSWORD)
 	firebase deploy --project test --only hosting
 
 # Upload a recording made with `make record` to kuusense-test, as the app would.

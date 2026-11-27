@@ -129,9 +129,12 @@ Meta de calidad: al menos 90 % de datos válidos por sesión en la Fase 1 CORFO 
 | 24-11-2026 | El chat con IA, el avatar con IA y el tablero CAA quedan para más adelante, como módulos separados. |
 | 24-11-2026 | No hay una demo programada. Se construye de forma incremental. |
 | 24-11-2026 | El nombre "SensoRegula" no se considera (MVP anterior). |
-| 24-11-2026 | Modelo de datos: el NNA se guarda en dos partes, una seudónima para investigación y una privada (apodo y avatar) solo para sus tutores. Se guarda el año de nacimiento, no la fecha completa, y no se guardan fotos. |
+| 24-11-2026 | Modelo de datos: el NNA se guarda en dos partes, una seudónima para investigación y una privada (apodo y avatar) solo para sus tutores. Se guarda el año de nacimiento, no la fecha completa, y no se guardan fotos. *(Fecha completa: ver decisión del 26-11-2026.)* |
 | 24-11-2026 | Cualquier tutor registra un NNA confirmando el consentimiento del cuidador. Otros tutores se vinculan con un código de 6 caracteres, válido por 48 h y de un solo uso. Por ahora, todos los tipos de tutor tienen los mismos permisos (pendiente pregunta 3). |
 | 26-11-2026 | Tres roles: administrador, investigador y tutor. Solo el admin crea, edita y desactiva tutores (plataforma web); la app no tiene registro de cuentas. El NNA se registra desde la app (tutor) o desde la web (admin, eligiendo al tutor responsable), con el mismo formulario. El admin ve el apodo del NNA y el correo del tutor; los investigadores no. El tutor edita su propio nombre y tipo. |
+| 26-11-2026 | La fecha de nacimiento completa se pide en el formulario del NNA y se guarda solo en la parte privada (tutores y admin), donde se muestra la edad exacta. La parte de investigación conserva solo el año. No hay límite de edad (desde 1920), para poder registrar adultos en pruebas. Los NNA antiguos, que solo tienen el año, la completan al editarse. |
+| 26-11-2026 | Mantenedor de investigadores en la web: el admin crea investigadores (reciben un correo para crear su contraseña), edita su nombre y los desactiva. Un investigador desactivado pierde el acceso a la plataforma y a los datos. Nadie se elimina desde las apps: tutores e investigadores se desactivan; los admins se gestionan solo con herramientas de administración. |
+| 26-11-2026 | Los tutores que comparten un NNA se ven entre sí en la app (nombre, tipo y foto, nunca el correo), en la hoja "Tutores" del NNA. El responsable puede desvincular a los demás desde ahí. |
 | 26-11-2026 | Se eliminan los datos demo. Los NNA solo se crean desde las apps; la importación desde la terminal solo agrega sesiones a un NNA existente. |
 
 ## 7. Preguntas abiertas para la clienta
@@ -147,6 +150,8 @@ Meta de calidad: al menos 90 % de datos válidos por sesión en la Fase 1 CORFO 
 9. **Etiquetado:** ¿quiénes etiquetan los episodios y desde dónde (en vivo durante la sesión, o después con el video)?
 10. **Estrategias:** ¿existe un catálogo de estrategias por cuadrante de Dunn y emoción (textos e imágenes)? ¿Quién lo mantiene?
 11. **Conductas a marcar:** ¿qué conductas y eventos deben poder marcar los tutores durante una sesión? Hoy la app usa una lista provisoria (inquietud, se tapa los oídos, movimientos repetitivos, llanto, inicio y fin de crisis, se aplicó estrategia, se calmó, más una nota libre). ¿Y qué lugares y actividades conviene registrar como contexto?
+12. **Retiro del consentimiento y retención:** si una familia retira su consentimiento, ¿se borran también sus sesiones y archivos crudos, o pueden conservarse seudonimizados? ¿Cuánto tiempo se guardan los datos? Hoy, eliminar un NNA borra solo sus datos identificables (apodo, avatar y fecha) y conserva las sesiones. Conviene alinearlo con el comité de ética.
+13. **Investigadores:** ¿quiénes son concretamente (equipo clínico, equipo de IA, socios externos)? ¿Todos necesitan descargar datos crudos, o algunos solo ver resúmenes?
 
 ## 8. Inconsistencias detectadas en el concepto tecnológico
 

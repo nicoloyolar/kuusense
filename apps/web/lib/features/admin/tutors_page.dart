@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:kuusense_firebase/kuusense_firebase.dart';
 import 'package:kuusense_ui/kuusense_ui.dart';
 
+import '../common/data_table.dart';
 import '../common/feedback.dart';
-import '../dashboard/dash_page.dart';
-import 'admin_widgets.dart';
+import '../common/panel.dart';
+import '../dashboard/session_cells.dart';
 
 /// Admin maintainer of tutor accounts: create, edit, deactivate and resend
 /// the access email. Tutors cannot sign up by themselves.
@@ -23,8 +24,18 @@ class TutorsPage extends StatefulWidget {
   State<TutorsPage> createState() => _TutorsPageState();
 }
 
+enum _ActiveFilter { all, active, inactive }
+
 class _TutorsPageState extends State<TutorsPage> {
   String _query = '';
+  TutorType? _type;
+  _ActiveFilter _active = _ActiveFilter.all;
+
+  /// Download URL per photo path, fetched once.
+  final _photoUrls = <String, Future<String>>{};
+  Future<String>? _photoUrl(String? path) => path == null
+      ? null
+      : _photoUrls.putIfAbsent(path, () => repo.downloadUrl(path));
 
   KuusenseRepository get repo => widget.repo;
 
@@ -38,7 +49,9 @@ class _TutorsPageState extends State<TutorsPage> {
     if (created != null && mounted) {
       showMessage(
         context,
-        'Tutor creado. Le enviamos un correo a ${created.email} para que cree su contraseña.',
+        KuusenseEnv.testPassword.isNotEmpty
+            ? 'Tutor creado. Período de pruebas: entra con ${created.email} y la contraseña de pruebas.'
+            : 'Tutor creado. Le enviamos un correo a ${created.email} para que cree su contraseña.',
       );
     }
   }
@@ -47,7 +60,11 @@ class _TutorsPageState extends State<TutorsPage> {
     context,
     title: 'Editar tutor',
     icon: Icons.edit_outlined,
-    builder: (_) => TutorDialog(repo: repo, initial: t),
+    builder: (_) => TutorDialog(
+      repo: repo,
+      initial: t,
+      photoUrl: _photoUrl(t.photoPath),
+    ),
   );
 
   Future<void> _toggleActive(Tutor t) async {
@@ -87,159 +104,191 @@ class _TutorsPageState extends State<TutorsPage> {
       }
     }
     final q = _query.trim().toLowerCase();
-    final visible = widget.tutors
-        .where(
-          (t) =>
-              q.isEmpty ||
-              t.displayName.toLowerCase().contains(q) ||
-              t.email.contains(q),
-        )
-        .toList();
+    final rows = widget.tutors.where((t) {
+      if (_type != null && t.type != _type) return false;
+      if (_active == _ActiveFilter.active && !t.active) return false;
+      if (_active == _ActiveFilter.inactive && t.active) return false;
+      return q.isEmpty ||
+          t.displayName.toLowerCase().contains(q) ||
+          t.email.contains(q);
+    }).toList();
+    final activeCount = widget.tutors.where((t) => t.active).length;
 
-    return DashPage(
+    return KuuPageBody(
       children: [
-        AdminHeader(
+        KuuPageHeader(
           title: 'Tutores',
           subtitle:
-              'Familiares, docentes y terapeutas que usan la app. '
-              'Solo el administrador crea sus cuentas.',
-          action: FilledButton.icon(
-            onPressed: _create,
-            icon: const Icon(Icons.person_add_alt_1_rounded),
-            label: const Text('Nuevo tutor'),
-          ),
+              '$activeCount activos de ${widget.tutors.length}. '
+              'Familiares, docentes y terapeutas que usan la app; solo el administrador crea sus cuentas.',
+          actions: [
+            FilledButton.icon(
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+              onPressed: _create,
+              icon: const Icon(Icons.person_add_alt_1_rounded, size: 20),
+              label: const Text('Nuevo tutor'),
+            ),
+          ],
         ),
         const SizedBox(height: KuuSpacing.lg),
-        AdminSearchField(
-          hint: 'Buscar por nombre o correo',
-          onChanged: (v) => setState(() => _query = v),
-        ),
-        const SizedBox(height: KuuSpacing.md),
-        if (widget.tutors.isEmpty)
-          const AdminEmpty(
-            icon: Icons.group_outlined,
-            title: 'Aún no hay tutores',
-            text: 'Crea el primero con "Nuevo tutor".',
-          )
-        else if (visible.isEmpty)
-          const AdminEmpty(
-            icon: Icons.search_off_rounded,
-            title: 'Sin resultados',
-            text: 'Prueba con otro nombre o correo.',
-          )
-        else
-          KuuSurface(
-            child: Column(
-              children: [
-                for (final (i, t) in visible.indexed) ...[
-                  if (i > 0)
-                    Divider(height: 1, color: theme.colorScheme.outline),
-                  _TutorRow(
-                    tutor: t,
-                    childCount: childCount[t.uid] ?? 0,
-                    onEdit: () => _edit(t),
-                    onToggleActive: () => _toggleActive(t),
-                    onResend: t.email.isEmpty ? null : () => _resend(t),
-                  ),
+        KuuDataTable<Tutor>(
+          rows: rows,
+          rowKey: (t) => t.uid,
+          onRowTap: _edit,
+          initialSort: 0,
+          emptyText: widget.tutors.isEmpty
+              ? 'Aún no hay tutores. Crea el primero con "Nuevo tutor".'
+              : 'No hay tutores con estos filtros.',
+          toolbar: KuuToolbar(
+            children: [
+              KuuSearchField(
+                hint: 'Buscar por nombre o correo',
+                onChanged: (v) => setState(() => _query = v),
+              ),
+              KuuFilter<TutorType?>(
+                label: 'Tipo',
+                value: _type,
+                options: [
+                  (null, 'Todos'),
+                  for (final t in TutorType.values) (t, t.label),
                 ],
-              ],
-            ),
+                onChanged: (v) => setState(() => _type = v),
+                width: 160,
+              ),
+              KuuFilter<_ActiveFilter>(
+                label: 'Estado',
+                value: _active,
+                options: const [
+                  (_ActiveFilter.all, 'Todos'),
+                  (_ActiveFilter.active, 'Activos'),
+                  (_ActiveFilter.inactive, 'Desactivados'),
+                ],
+                onChanged: (v) => setState(() => _active = v),
+                width: 160,
+              ),
+            ],
           ),
-      ],
-    );
-  }
-}
-
-class _TutorRow extends StatelessWidget {
-  const _TutorRow({
-    required this.tutor,
-    required this.childCount,
-    required this.onEdit,
-    required this.onToggleActive,
-    required this.onResend,
-  });
-  final Tutor tutor;
-  final int childCount;
-  final VoidCallback onEdit;
-  final VoidCallback onToggleActive;
-  final VoidCallback? onResend;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final muted = theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    );
-    return Opacity(
-      opacity: tutor.active ? 1 : 0.6,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: KuuSpacing.md,
-          vertical: KuuSpacing.sm,
-        ),
-        child: Row(
-          children: [
-            KuuIconTile(
-              icon: tutorTypeIcon(tutor.type),
-              color: KuuColor.brandHighlight,
-              size: 44,
-              round: true,
-            ),
-            const SizedBox(width: KuuSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          columns: [
+            KuuColumn(
+              label: 'Tutor',
+              flex: 4,
+              sortBy: (t) => t.displayName.toLowerCase(),
+              cell: (t) => Row(
                 children: [
-                  Text(tutor.displayName, style: theme.textTheme.titleMedium),
-                  Text(
-                    tutor.email.isEmpty ? 'Correo no registrado' : tutor.email,
-                    style: muted,
+                  Opacity(
+                    opacity: t.active ? 1 : 0.5,
+                    child: KuuPersonAvatar(
+                      name: t.displayName,
+                      photoUrl: _photoUrl(t.photoPath),
+                      size: 34,
+                    ),
                   ),
-                  const SizedBox(height: KuuSpacing.xs),
-                  Wrap(
-                    spacing: KuuSpacing.sm,
-                    runSpacing: KuuSpacing.xs,
-                    children: [
-                      AdminTag(tutor.type.label),
-                      AdminTag(childCount == 1 ? '1 NNA' : '$childCount NNA'),
-                      if (!tutor.active)
-                        const AdminTag(
-                          'Desactivado',
-                          color: KuuColor.feedbackError,
-                        ),
-                    ],
+                  const SizedBox(width: KuuSpacing.sm),
+                  Flexible(
+                    child: Text(
+                      t.displayName,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
-            PopupMenuButton<VoidCallback>(
-              tooltip: 'Acciones',
-              onSelected: (action) => action(),
-              itemBuilder: (_) => [
-                PopupMenuItem(value: onEdit, child: const Text('Editar')),
-                if (onResend != null)
-                  PopupMenuItem(
-                    value: onResend!,
-                    child: const Text('Reenviar correo de acceso'),
+            KuuColumn(
+              label: 'Correo',
+              flex: 4,
+              sortBy: (t) => t.email,
+              cell: (t) => t.email.isEmpty
+                  ? const MutedText('No registrado')
+                  : Text(t.email),
+            ),
+            KuuColumn(
+              label: 'Tipo',
+              flex: 2,
+              sortBy: (t) => t.type.label,
+              cell: (t) => Row(
+                children: [
+                  Icon(
+                    tutorTypeIcon(t.type),
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
-                PopupMenuItem(
-                  value: onToggleActive,
-                  child: Text(tutor.active ? 'Desactivar' : 'Activar'),
-                ),
-              ],
+                  const SizedBox(width: KuuSpacing.xs),
+                  Text(t.type.label),
+                ],
+              ),
+            ),
+            KuuColumn(
+              label: 'NNA',
+              flex: 1,
+              alignEnd: true,
+              sortBy: (t) => childCount[t.uid] ?? 0,
+              cell: (t) => Text('${childCount[t.uid] ?? 0}'),
+            ),
+            KuuColumn(
+              label: 'Estado',
+              flex: 2,
+              sortBy: (t) => t.active ? 0 : 1,
+              cell: (t) => t.active
+                  ? const KuuStatusBadge('Activo', color: KuuColor.stateStable)
+                  : const KuuStatusBadge(
+                      'Desactivado',
+                      color: KuuColor.feedbackError,
+                    ),
+            ),
+            KuuColumn(
+              label: 'Creado',
+              flex: 2,
+              sortBy: (t) => t.createdAtMs,
+              cell: (t) => MutedText(formatDate(t.createdAtMs)),
+            ),
+            KuuColumn(
+              label: '',
+              width: 56,
+              alignEnd: true,
+              cell: (t) => PopupMenuButton<VoidCallback>(
+                tooltip: 'Acciones',
+                icon: const Icon(Icons.more_vert_rounded, size: 20),
+                onSelected: (action) => action(),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: () => _edit(t),
+                    child: const Text('Editar'),
+                  ),
+                  if (t.email.isNotEmpty)
+                    PopupMenuItem(
+                      value: () => _resend(t),
+                      child: const Text('Reenviar correo de acceso'),
+                    ),
+                  PopupMenuItem(
+                    value: () => _toggleActive(t),
+                    child: Text(t.active ? 'Desactivar' : 'Activar'),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 }
 
 /// Creates a tutor (account + profile) or edits one. Pops the saved tutor.
 class TutorDialog extends StatefulWidget {
-  const TutorDialog({super.key, required this.repo, this.initial});
+  const TutorDialog({
+    super.key,
+    required this.repo,
+    this.initial,
+    this.photoUrl,
+  });
   final KuusenseRepository repo;
   final Tutor? initial;
+
+  /// Profile photo of the tutor being edited (shown above the form).
+  final Future<String>? photoUrl;
 
   @override
   State<TutorDialog> createState() => _TutorDialogState();
@@ -296,6 +345,20 @@ class _TutorDialogState extends State<TutorDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (!_isNew) ...[
+            Center(
+              child: ListenableBuilder(
+                listenable: _name,
+                builder: (_, _) => KuuPersonAvatar(
+                  name: _name.text,
+                  photoUrl: widget.photoUrl,
+                  size: 88,
+                  shadow: true,
+                ),
+              ),
+            ),
+            const SizedBox(height: KuuSpacing.lg),
+          ],
           TextFormField(
             controller: _name,
             textCapitalization: TextCapitalization.words,

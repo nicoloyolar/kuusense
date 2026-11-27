@@ -2,12 +2,38 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    // Tutor profile photo (optional). The tutor uploads, replaces or removes
+    // it; the tutor, admins and other active tutors (co-tutors, who learn the
+    // path from the public card) see it. Never researchers.
+    match /tutors/{tutorId}/{file} {
+      function isSelf() { return request.auth != null && request.auth.uid == tutorId; }
+      function isAdmin() {
+        return request.auth != null
+          && firestore.exists(/databases/(default)/documents/staff/$(request.auth.uid))
+          && firestore.get(/databases/(default)/documents/staff/$(request.auth.uid)).data.role == 'admin';
+      }
+
+      allow create, update: if isSelf()
+        && file.matches('photo-[0-9]+[.](jpg|png)')
+        && request.resource.contentType in ['image/jpeg', 'image/png']
+        && request.resource.size < 2 * 1024 * 1024;
+      function isActiveTutor() {
+        return request.auth != null
+          && firestore.exists(/databases/(default)/documents/tutors/$(request.auth.uid))
+          && firestore.get(/databases/(default)/documents/tutors/$(request.auth.uid)).data.get('active', true) == true;
+      }
+
+      allow delete: if isSelf();
+      allow read: if isSelf() || isAdmin() || isActiveTutor();
+    }
+
     match /children/{childId}/sessions/{sessionId}/{file} {
       function session() {
         return firestore.get(/databases/(default)/documents/children/$(childId)/sessions/$(sessionId)).data;
       }
       function isStaff() {
-        return firestore.exists(/databases/(default)/documents/staff/$(request.auth.uid));
+        return firestore.exists(/databases/(default)/documents/staff/$(request.auth.uid))
+          && firestore.get(/databases/(default)/documents/staff/$(request.auth.uid)).data.get('active', true) == true;
       }
 
       // Only the tutor whose phone recorded the session uploads its files.

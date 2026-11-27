@@ -10,13 +10,14 @@ import {
   arrayRemove, arrayUnion, collection, collectionGroup, deleteDoc, doc, getDoc, getDocs,
   query, setDoc, updateDoc, where, writeBatch,
 } from 'firebase/firestore';
-import { ref, uploadString, getBytes } from 'firebase/storage';
+import { ref, uploadString, getBytes, deleteObject } from 'firebase/storage';
 
 let env;
 
 // alice: owner of NNA c1 · carol: linked to c1 · bob: tutor, not linked
 // dave: researcher (staff) · eve: account without tutor profile
 // frank: admin (staff) · gina: deactivated tutor, still listed in c1
+// hugo: deactivated researcher
 const user = (uid, provider = 'password') => env.authenticatedContext(uid, {
   email: `${uid}@test.cl`, firebase: { sign_in_provider: provider },
 });
@@ -27,6 +28,7 @@ const dave = () => user('dave');
 const eve = () => user('eve');
 const frank = () => user('frank');
 const gina = () => user('gina');
+const hugo = () => user('hugo');
 
 const HOUR = 60 * 60 * 1000;
 const C1 = 'c1';
@@ -69,6 +71,9 @@ beforeEach(async () => {
     await setDoc(doc(db, 'tutors', 'gina'), tutor({ email: 'gina@test.cl', active: false }));
     await setDoc(doc(db, 'staff', 'dave'), { role: 'researcher' });
     await setDoc(doc(db, 'staff', 'frank'), { role: 'admin' });
+    await setDoc(doc(db, 'staff', 'hugo'), {
+      role: 'researcher', displayName: 'Hugo', email: 'hugo@test.cl', active: false, createdAtMs: 1,
+    });
     await setDoc(doc(db, 'children', C1), child({ tutorUids: ['alice', 'carol', 'gina'] }));
     await setDoc(doc(db, 'children', C1, 'private', 'profile'), profile());
     await setDoc(doc(db, 'children', C2), child({ code: 'N-WXYZ', ownerUid: 'bob', tutorUids: ['bob'] }));
@@ -102,6 +107,12 @@ describe('tutors', () => {
     await assertFails(updateDoc(tutorRef(alice(), 'alice'), { active: false }));
     await assertFails(updateDoc(tutorRef(alice(), 'alice'), { email: 'x@test.cl' }));
   });
+  test('a tutor sets or clears their own photo path, only in their folder', async () => {
+    await assertSucceeds(updateDoc(tutorRef(alice(), 'alice'), { photoPath: 'tutors/alice/photo-123.jpg' }));
+    await assertSucceeds(updateDoc(tutorRef(alice(), 'alice'), { photoPath: null }));
+    await assertFails(updateDoc(tutorRef(alice(), 'alice'), { photoPath: 'tutors/bob/photo-1.jpg' }));
+    await assertFails(updateDoc(tutorRef(alice(), 'alice'), { photoPath: 'https://evil.example/x.jpg' }));
+  });
   test('a deactivated tutor reads their profile but cannot edit it', async () => {
     await assertSucceeds(getDoc(tutorRef(gina(), 'gina')));
     await assertFails(updateDoc(tutorRef(gina(), 'gina'), { displayName: 'G' }));
@@ -120,7 +131,7 @@ describe('tutors', () => {
     await assertFails(getDoc(tutorRef(bob(), 'alice')));
     await assertFails(setDoc(tutorRef(bob(), 'alice'), tutor()));
   });
-  test('staff docs are read-only for clients', async () => {
+  test('staff docs: each member reads their own; others cannot write', async () => {
     await assertSucceeds(getDoc(doc(dave().firestore(), 'staff', 'dave')));
     await assertFails(setDoc(doc(eve().firestore(), 'staff', 'eve'), { role: 'admin' }));
     await assertFails(setDoc(doc(frank().firestore(), 'staff', 'eve'), { role: 'admin' }));
@@ -157,6 +168,23 @@ describe('registering a child (NNA)', () => {
     await assertFails(register(bob(), 'new', child({ ...base, birthYear: 3000 })));
     await assertFails(register(bob(), 'new', child({ ...base, dunnQuadrant: 'happy' })));
     await assertFails(register(bob(), 'new', undefined, profile({ photoUrl: 'http://x' })));
+    await assertFails(register(bob(), 'new', child({ ...base, birthYear: 1900 })));
+  });
+  test('adults can be registered (birth year from 1920)', async () => {
+    const base = { ownerUid: 'bob', tutorUids: ['bob'] };
+    await assertSucceeds(register(bob(), 'new', child({ ...base, birthYear: 1985 }),
+      profile({ birthDate: '1985-03-14' })));
+  });
+  test('the full birth date lives only in the private profile', async () => {
+    const base = { ownerUid: 'bob', tutorUids: ['bob'] };
+    await assertSucceeds(register(bob(), 'new', undefined, profile({ birthDate: '2018-02-28' })));
+    await assertFails(register(bob(), 'new2', child({ ...base, birthDate: '2018-02-28' })));
+    await assertFails(register(bob(), 'new3', undefined, profile({ birthDate: '28-02-2018' })));
+    await assertFails(register(bob(), 'new4', undefined, profile({ birthDate: '2018-13-01' })));
+    await assertFails(register(bob(), 'new5', undefined, profile({ birthDate: 20180228 })));
+  });
+  test('a linked tutor adds the birth date to an older profile', async () => {
+    await assertSucceeds(updateDoc(profileRef(alice()), { birthDate: '2018-05-01' }));
   });
 });
 
@@ -444,9 +472,126 @@ describe('storage', () => {
     await assertFails(uploadString(ref(carol().storage(), `${path}/raw.csv`), 'x'));
     await assertFails(uploadString(ref(alice().storage(), `${path}/evil.html`), 'x'));
   });
+  test('a tutor uploads, replaces and removes their own JPEG or PNG photo', async () => {
+    const photo = (ctx, name = 'photo-1.jpg') => ref(ctx.storage(), `tutors/alice/${name}`);
+    const jpeg = { contentType: 'image/jpeg' };
+    await assertSucceeds(uploadString(photo(alice()), 'jpg', 'raw', jpeg));
+    await assertSucceeds(uploadString(photo(alice(), 'photo-2.jpg'), 'jpg', 'raw', jpeg));
+    await assertSucceeds(deleteObject(photo(alice())));
+    await assertFails(uploadString(photo(bob()), 'jpg', 'raw', jpeg));
+    await assertSucceeds(uploadString(photo(alice(), 'photo-3.png'), 'png', 'raw', { contentType: 'image/png' }));
+    await assertFails(uploadString(photo(alice(), 'photo-5.gif'), 'x', 'raw', { contentType: 'image/gif' }));
+    await assertFails(uploadString(photo(alice(), 'photo-4.jpg'), '<html>', 'raw', { contentType: 'text/html' }));
+  });
+  test('the tutor, admins and active tutors see a tutor photo; never staff researchers', async () => {
+    const path = 'tutors/alice/photo-1.jpg';
+    await uploadString(ref(alice().storage(), path), 'jpg', 'raw', { contentType: 'image/jpeg' });
+    await assertSucceeds(getBytes(ref(alice().storage(), path)));
+    await assertSucceeds(getBytes(ref(frank().storage(), path)));
+    await assertSucceeds(getBytes(ref(carol().storage(), path)));
+    await assertFails(getBytes(ref(dave().storage(), path)));
+    await assertFails(getBytes(ref(eve().storage(), path)));
+  });
   test('staff download raw data; tutors cannot', async () => {
     await uploadString(ref(alice().storage(), `${path}/raw.csv`), 'data');
     await assertSucceeds(getBytes(ref(dave().storage(), `${path}/raw.csv`)));
     await assertFails(getBytes(ref(carol().storage(), `${path}/raw.csv`)));
+    await assertFails(getBytes(ref(hugo().storage(), `${path}/raw.csv`)));
+  });
+});
+
+describe('researchers maintainer (staff)', () => {
+  const staffRef = (ctx, uid) => doc(ctx.firestore(), 'staff', uid);
+  const researcher = (over = {}) => ({
+    role: 'researcher', displayName: 'Eva', email: 'eve@test.cl', active: true, createdAtMs: 1, ...over,
+  });
+
+  test('only an admin lists staff', async () => {
+    await assertSucceeds(getDocs(collection(frank().firestore(), 'staff')));
+    await assertFails(getDocs(collection(dave().firestore(), 'staff')));
+    await assertFails(getDocs(collection(alice().firestore(), 'staff')));
+  });
+  test('an admin creates researchers, never admins', async () => {
+    await assertSucceeds(setDoc(staffRef(frank(), 'eve'), researcher()));
+    await assertFails(setDoc(staffRef(frank(), 'eve2'), researcher({ role: 'admin' })));
+    await assertFails(setDoc(staffRef(frank(), 'eve3'), researcher({ active: false })));
+    await assertFails(setDoc(staffRef(frank(), 'eve4'), researcher({ phone: '123' })));
+    await assertFails(setDoc(staffRef(dave(), 'eve5'), researcher()));
+    await assertFails(setDoc(staffRef(alice(), 'eve6'), researcher()));
+  });
+  test('an admin renames and deactivates a researcher, nothing else', async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(staffRef(ctx, 'eve'), researcher()));
+    await assertSucceeds(updateDoc(staffRef(frank(), 'eve'), { displayName: 'Eva P.', active: false }));
+    await assertFails(updateDoc(staffRef(frank(), 'eve'), { role: 'admin' }));
+    await assertFails(updateDoc(staffRef(frank(), 'eve'), { email: 'x@test.cl' }));
+    await assertFails(updateDoc(staffRef(dave(), 'eve'), { active: false }));
+    await assertFails(deleteDoc(staffRef(frank(), 'eve')));
+  });
+  test('admins are managed only with admin tooling', async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(staffRef(ctx, 'ivan'),
+      { role: 'admin', displayName: 'Iván', email: 'ivan@test.cl', active: true, createdAtMs: 1 }));
+    await assertFails(updateDoc(staffRef(frank(), 'ivan'), { active: false }));
+  });
+  test('a deactivated researcher loses access to research data', async () => {
+    await assertSucceeds(getDoc(doc(hugo().firestore(), 'staff', 'hugo')));
+    await assertFails(getDoc(childRef(hugo())));
+    await assertFails(getDoc(sessionRef(hugo())));
+    await assertFails(getDocs(collectionGroup(hugo().firestore(), 'sessions')));
+    await assertSucceeds(getDoc(childRef(dave())));
+  });
+});
+
+describe('tutor public cards', () => {
+  const cardRef = (ctx, uid) => doc(ctx.firestore(), 'tutors', uid, 'public', 'card');
+  const tutorRef = (ctx, uid) => doc(ctx.firestore(), 'tutors', uid);
+  const card = (over = {}) => ({ displayName: 'Ana', type: 'family', photoPath: null, ...over });
+
+  test('active tutors and admins get a card; nobody lists them', async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(cardRef(ctx, 'carol'), card()));
+    await assertSucceeds(getDoc(cardRef(alice(), 'carol')));
+    await assertSucceeds(getDoc(cardRef(frank(), 'carol')));
+    await assertFails(getDoc(cardRef(dave(), 'carol')));
+    await assertFails(getDoc(cardRef(gina(), 'carol')));
+    await assertFails(getDoc(cardRef(eve(), 'carol')));
+    await assertFails(getDocs(collectionGroup(alice().firestore(), 'public')));
+  });
+  test('the email never goes on the card', async () => {
+    await assertFails(setDoc(cardRef(alice(), 'alice'), card({ email: 'alice@test.cl' })));
+  });
+  test('a tutor writes their own card, equal to their profile', async () => {
+    await assertSucceeds(setDoc(cardRef(alice(), 'alice'), card()));
+    await assertFails(setDoc(cardRef(alice(), 'alice'), card({ displayName: 'Otra' })));
+    await assertFails(setDoc(cardRef(alice(), 'carol'), card()));
+    await assertFails(setDoc(cardRef(gina(), 'gina'), card()));
+  });
+  test('profile and card change together in one batch', async () => {
+    const ctx = alice();
+    const b = writeBatch(ctx.firestore());
+    b.update(tutorRef(ctx, 'alice'), { displayName: 'Alicia' });
+    b.set(cardRef(ctx, 'alice'), card({ displayName: 'Alicia' }));
+    await assertSucceeds(b.commit());
+  });
+  test('an admin writes any tutor card', async () => {
+    await assertSucceeds(setDoc(cardRef(frank(), 'carol'), card()));
+    await assertFails(setDoc(cardRef(dave(), 'carol'), card()));
+  });
+  test('co-tutors see the photo; researchers do not', async () => {
+    const path = 'tutors/carol/photo-1.jpg';
+    await uploadString(ref(carol().storage(), path), 'img', 'raw', { contentType: 'image/jpeg' });
+    await assertSucceeds(getBytes(ref(alice().storage(), path)));
+    await assertFails(getBytes(ref(dave().storage(), path)));
+    await assertFails(getBytes(ref(gina().storage(), path)));
+  });
+});
+
+describe('session comments', () => {
+  test('a session context may carry a short comment', async () => {
+    await assertSucceeds(updateDoc(sessionRef(alice()), {
+      context: { place: 'home', activity: 'rest', present: [], comment: 'Sensor en la muñeca izquierda' },
+    }));
+    await assertFails(updateDoc(sessionRef(alice()), {
+      context: { comment: 'x'.repeat(501) },
+    }));
+    await assertFails(updateDoc(sessionRef(alice()), { context: { comment: 42 } }));
   });
 });

@@ -5,7 +5,7 @@
 // Uses Application Default Credentials (`gcloud auth application-default login`).
 //
 // Usage (from firebase/):
-//   node admin/set-staff.mjs --project kuusense-test --email a@b.cl --role admin [--password X]
+//   node admin/set-staff.mjs --project kuusense-test --email a@b.cl --role admin [--name 'Nombre'] [--password X]
 //   node admin/set-staff.mjs --project kuusense-test --email a@b.cl --remove
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
@@ -59,6 +59,14 @@ if (args.remove) {
   await ref.delete();
   console.log('Acceso de staff eliminado.');
 } else {
-  await ref.set({ role });
+  // Same fields the web researchers maintainer writes.
+  const prev = (await ref.get()).data() ?? {};
+  await ref.set({
+    role,
+    displayName: args.name ?? prev.displayName ?? '',
+    email,
+    active: true,
+    createdAtMs: prev.createdAtMs ?? Date.now(),
+  });
   console.log(`Rol asignado: ${role} en ${project}`);
 }

@@ -4,17 +4,24 @@ import 'package:flutter/material.dart';
 
 /// Minimal auto-scaling line plot for live signals.
 class Sparkline extends StatelessWidget {
-  const Sparkline({super.key, required this.values, required this.color, this.height = 80});
+  const Sparkline({
+    super.key,
+    required this.values,
+    required this.color,
+    this.height = 80,
+  });
   final Iterable<double> values;
   final Color color;
   final double height;
 
   @override
   Widget build(BuildContext context) => SizedBox(
-        height: height,
-        width: double.infinity,
-        child: CustomPaint(painter: _SparkPainter(values.toList(growable: false), color)),
-      );
+    height: height,
+    width: double.infinity,
+    child: CustomPaint(
+      painter: _SparkPainter(values.toList(growable: false), color),
+    ),
+  );
 }
 
 class _SparkPainter extends CustomPainter {
@@ -37,12 +44,27 @@ class _SparkPainter extends CustomPainter {
       final y = size.height - (v[i] - lo) / (hi - lo) * size.height;
       i == 0 ? path.moveTo(0, y) : path.lineTo(i * dx, y);
     }
+    // Soft fill under the line, fading down.
+    final fill = Path.from(path)
+      ..lineTo((v.length - 1) * dx, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(
+      fill,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [color.withValues(alpha: 0.22), color.withValues(alpha: 0)],
+        ).createShader(Offset.zero & size),
+    );
     canvas.drawPath(
       path,
       Paint()
         ..color = color
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
+        ..strokeWidth = 2.2
+        ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );
   }

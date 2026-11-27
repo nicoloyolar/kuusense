@@ -31,7 +31,9 @@ class _StaffGateState extends State<StaffGate> {
           );
         }
         final staff = snap.data;
-        if (staff == null) return _NoAccess(auth: widget.auth);
+        if (staff == null || !staff.active) {
+          return _NoAccess(auth: widget.auth, deactivated: staff != null);
+        }
         return DashboardShell(auth: widget.auth, repo: repo, staff: staff);
       },
     );
@@ -39,8 +41,11 @@ class _StaffGateState extends State<StaffGate> {
 }
 
 class _NoAccess extends StatelessWidget {
-  const _NoAccess({required this.auth});
+  const _NoAccess({required this.auth, this.deactivated = false});
   final AuthService auth;
+
+  /// A staff member the admin deactivated (not a tutor account).
+  final bool deactivated;
 
   @override
   Widget build(BuildContext context) {
@@ -60,14 +65,18 @@ class _NoAccess extends StatelessWidget {
                     const KuusenseLogo(height: 96),
                     const SizedBox(height: KuuSpacing.lg),
                     Text(
-                      'Tu cuenta no tiene acceso a la plataforma',
+                      deactivated
+                          ? 'Tu acceso a la plataforma está desactivado'
+                          : 'Tu cuenta no tiene acceso a la plataforma',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.headlineSmall,
                     ),
                     const SizedBox(height: KuuSpacing.sm),
                     Text(
-                      'La plataforma es para el equipo de investigación y administración. '
-                      'Si eres tutor o tutora, usa la app móvil de KúuSense.',
+                      deactivated
+                          ? 'Si crees que es un error, contacta al administrador de KúuSense.'
+                          : 'La plataforma es para el equipo de investigación y administración. '
+                                'Si eres tutor o tutora, usa la app móvil de KúuSense.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,

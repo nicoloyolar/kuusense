@@ -15,6 +15,16 @@ void main() {
   });
   tearDown(() => sim.stop());
 
+  test('a target that cannot be sent to does not stop discovery', () async {
+    final found = await EmotiBitHost.discover(
+      // An IPv6 address cannot be sent to from the IPv4 socket (throws).
+      targets: [InternetAddress.loopbackIPv6, InternetAddress.loopbackIPv4],
+      advertisingPort: port,
+      timeout: const Duration(milliseconds: 600),
+    );
+    expect(found.map((d) => d.deviceId), ['TEST-1']);
+  });
+
   test('discover → connect → stream → record → disconnect', () async {
     final found = await EmotiBitHost.discover(
       targets: [InternetAddress.loopbackIPv4],

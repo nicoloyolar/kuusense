@@ -24,6 +24,14 @@ String formatDuration(Duration d) {
   return '${d.inSeconds} s';
 }
 
+/// Short form for lists, always one line: `1 h 05`, `5 min`, `45 s`
+/// (minutes rounded). Details use [formatDuration].
+String formatDurationShort(Duration d) {
+  if (d.inHours > 0) return '${d.inHours} h ${_two(d.inMinutes % 60)}';
+  if (d.inSeconds >= 60) return '${(d.inSeconds / 60).round()} min';
+  return '${d.inSeconds} s';
+}
+
 /// Offset from the session start, `mm:ss` (or `h:mm:ss`).
 String formatOffset(Duration d) {
   final base = '${_two(d.inMinutes % 60)}:${_two(d.inSeconds % 60)}';
@@ -40,8 +48,10 @@ String sessionStatusLabel(SessionStatus s) => switch (s) {
 String sessionEndReasonLabel(SessionEndReason? r) => switch (r) {
   null => 'Sin información de cierre',
   SessionEndReason.stopped => 'Detenida por el tutor',
-  SessionEndReason.deviceLost => 'Se cerró sola: el EmotiBit no volvió a conectarse',
-  SessionEndReason.appClosed => 'Se cerró sola: la app se cerró durante la grabación',
+  SessionEndReason.deviceLost =>
+    'Se cerró sola: el EmotiBit no volvió a conectarse',
+  SessionEndReason.appClosed =>
+    'Se cerró sola: la app se cerró durante la grabación',
 };
 
 /// Total time without data, e.g. `2 cortes · 1:35 sin datos`.

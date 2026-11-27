@@ -52,7 +52,7 @@ class _ChildrenHomeScreenState extends State<ChildrenHomeScreen> {
             final child = await repo.registerChild(
               displayName: d.displayName,
               avatarId: d.avatarId,
-              birthYear: d.birthYear,
+              birthDate: d.birthDate!,
               dunnQuadrant: d.dunnQuadrant,
               consentConfirmed: true,
             );
@@ -109,11 +109,23 @@ class _ChildrenHomeScreenState extends State<ChildrenHomeScreen> {
       builder: (_) => TutorProfileScreen(
         initialName: widget.tutor.displayName,
         initialType: widget.tutor.type,
+        email: widget.tutor.email,
+        tutor: repo.watchMyTutorProfile(),
+        photoUrl: repo.downloadUrl,
+        onSetPhoto: (bytes, previous) =>
+            repo.setMyTutorPhoto(bytes, previousPath: previous),
+        onRemovePhoto: repo.removeMyTutorPhoto,
         onSave: (name, type) =>
             repo.saveMyTutorProfile(displayName: name, type: type),
       ),
     ),
   );
+
+  /// Download URL of the tutor's photo, fetched once per photo.
+  final _photoUrls = <String, Future<String>>{};
+  Future<String>? _photoUrl(String? path) => path == null
+      ? null
+      : _photoUrls.putIfAbsent(path, () => repo.downloadUrl(path));
 
   Future<void> _confirmSignOut() async {
     final ok = await confirmDialog(
@@ -136,7 +148,11 @@ class _ChildrenHomeScreenState extends State<ChildrenHomeScreen> {
         actions: [
           PopupMenuButton<String>(
             tooltip: 'Mi cuenta',
-            icon: const Icon(Icons.account_circle_rounded),
+            icon: KuuPersonAvatar(
+              name: widget.tutor.displayName,
+              photoUrl: _photoUrl(widget.tutor.photoPath),
+              size: 34,
+            ),
             onSelected: (v) =>
                 v == 'profile' ? _editProfile() : _confirmSignOut(),
             itemBuilder: (_) => const [
@@ -298,10 +314,7 @@ class _ChildCardState extends State<_ChildCard> {
                                 ),
                               ],
                             ),
-                            Text(
-                              '${widget.child.approximateAge()} años aprox.',
-                              style: muted,
-                            ),
+                            Text(kuuAgeLabel(widget.child, p), style: muted),
                           ],
                         ),
                       ),

@@ -9,19 +9,23 @@ import 'package:kuusense_ui/kuusense_ui.dart';
 /// Pushes [screen] over a blank home so the screen can pop with a result.
 Future<List<Object?>> pumpPushed(WidgetTester tester, Widget screen) async {
   final results = <Object?>[];
-  await tester.pumpWidget(MaterialApp(
-    theme: KuuTheme.light(),
-    home: Builder(
-      builder: (context) => Scaffold(
-        body: TextButton(
-          onPressed: () async => results.add(
-            await Navigator.of(context).push<Object?>(MaterialPageRoute<Object?>(builder: (_) => screen)),
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: KuuTheme.light(),
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () async => results.add(
+              await Navigator.of(context).push<Object?>(
+                MaterialPageRoute<Object?>(builder: (_) => screen),
+              ),
+            ),
+            child: const Text('open'),
           ),
-          child: const Text('open'),
         ),
       ),
     ),
-  ));
+  );
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
   return results;
@@ -34,15 +38,42 @@ Future<void> tapButton(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
+/// Picks [item] in the birth-date dropdown whose hint is [hint].
+Future<void> pickDate(WidgetTester tester, String hint, String item) async {
+  final field = find.ancestor(
+    of: find.text(hint),
+    matching: find.byType(DropdownButton<int>),
+  );
+  await tester.ensureVisible(field);
+  await tester.tap(field);
+  await tester.pumpAndSettle();
+  // Only look inside the open menu (the button itself also builds every item).
+  final menu = find.byType(Scrollable).last;
+  final option = find.descendant(of: menu, matching: find.text(item));
+  await tester.scrollUntilVisible(option, 120, scrollable: menu);
+  await tester.ensureVisible(option);
+  await tester.pumpAndSettle();
+  await tester.tap(option);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   group('register child', () {
-    testWidgets('requires nickname, birth year, avatar and consent', (tester) async {
+    testWidgets('requires nickname, birth date, avatar and consent', (
+      tester,
+    ) async {
       ChildFormData? submitted;
-      await pumpPushed(tester, ChildFormScreen(now: DateTime(2026), onSubmit: (d) async => submitted = d));
+      await pumpPushed(
+        tester,
+        ChildFormScreen(
+          now: DateTime(2026),
+          onSubmit: (d) async => submitted = d,
+        ),
+      );
 
       await tapButton(tester, 'Registrar');
       expect(find.text('Completa el apodo'), findsOneWidget);
-      expect(find.text('Elige el año de nacimiento'), findsOneWidget);
+      expect(find.text('Completa la fecha de nacimiento'), findsOneWidget);
       expect(find.text('Elige un avatar'), findsNWidgets(2)); // title + error
       expect(find.text('Debes confirmarlo para continuar'), findsOneWidget);
       expect(submitted, isNull);
@@ -52,14 +83,17 @@ void main() {
       ChildFormData? submitted;
       final results = await pumpPushed(
         tester,
-        ChildFormScreen(now: DateTime(2026), onSubmit: (d) async => submitted = d),
+        ChildFormScreen(
+          now: DateTime(2026),
+          onSubmit: (d) async => submitted = d,
+        ),
       );
 
       await tester.enterText(find.byType(TextFormField).first, ' Tomi ');
-      await tester.tap(find.byType(DropdownButtonFormField<int>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('2018  (8 años aprox.)').last);
-      await tester.pumpAndSettle();
+      await pickDate(tester, 'Día', '14');
+      await pickDate(tester, 'Mes', 'marzo');
+      await pickDate(tester, 'Año', '2018');
+      expect(find.text('7 años'), findsOneWidget); // as of 2026-01-01
       await tester.ensureVisible(find.byKey(const ValueKey('avatar-rocket')));
       await tester.tap(find.byKey(const ValueKey('avatar-rocket')));
       await tester.ensureVisible(find.byType(Checkbox));
@@ -68,15 +102,55 @@ void main() {
 
       expect(submitted?.displayName, 'Tomi');
       expect(submitted?.birthYear, 2018);
+      expect(submitted?.birthDate, DateTime(2018, 3, 14));
       expect(submitted?.avatarId, 'rocket');
       expect(results, [true]);
+    });
+
+    testWidgets('accepts adults and rejects future dates', (tester) async {
+      await pumpPushed(
+        tester,
+        ChildFormScreen(now: DateTime(2026, 11, 26), onSubmit: (_) async {}),
+      );
+      await pickDate(tester, 'Día', '30');
+      await pickDate(tester, 'Mes', 'noviembre');
+      await pickDate(tester, 'Año', '2026');
+      await tapButton(tester, 'Registrar');
+      expect(find.text('La fecha no puede ser futura'), findsOneWidget);
+
+      // 30 Nov 1985: still 40 on 26 Nov 2026 (birthday not reached yet).
+      await pickDate(tester, '2026', '1985');
+      expect(find.text('40 años'), findsOneWidget);
+    });
+
+    testWidgets('older records keep their year and ask for the full date', (
+      tester,
+    ) async {
+      await pumpPushed(
+        tester,
+        ChildFormScreen(
+          initial: const ChildFormData(
+            displayName: 'Tomi',
+            avatarId: 'sun',
+            birthYear: 2018,
+          ),
+          onSubmit: (_) async {},
+        ),
+      );
+      expect(find.text('2018'), findsOneWidget);
+      await tapButton(tester, 'Guardar');
+      expect(find.text('Completa la fecha de nacimiento'), findsOneWidget);
     });
 
     testWidgets('editing does not ask for consent again', (tester) async {
       await pumpPushed(
         tester,
         ChildFormScreen(
-          initial: const ChildFormData(displayName: 'Tomi', avatarId: 'sun', birthYear: 2018),
+          initial: const ChildFormData(
+            displayName: 'Tomi',
+            avatarId: 'sun',
+            birthYear: 2018,
+          ),
           onSubmit: (_) async {},
         ),
       );
@@ -86,9 +160,14 @@ void main() {
   });
 
   group('join with code', () {
-    testWidgets('rejects short codes without calling the server', (tester) async {
+    testWidgets('rejects short codes without calling the server', (
+      tester,
+    ) async {
       var calls = 0;
-      await pumpPushed(tester, JoinWithCodeScreen(onJoin: (_) async => calls++));
+      await pumpPushed(
+        tester,
+        JoinWithCodeScreen(onJoin: (_) async => calls++),
+      );
       await tester.enterText(find.byType(TextField), 'ab1');
       await tapButton(tester, 'Unirme');
       expect(find.text('El código tiene 6 caracteres.'), findsOneWidget);
@@ -98,7 +177,10 @@ void main() {
     testWidgets('explains an expired code', (tester) async {
       await pumpPushed(
         tester,
-        JoinWithCodeScreen(onJoin: (_) async => throw const InviteFailure(InviteFailureReason.expired)),
+        JoinWithCodeScreen(
+          onJoin: (_) async =>
+              throw const InviteFailure(InviteFailureReason.expired),
+        ),
       );
       await tester.enterText(find.byType(TextField), 'k7m2pq');
       await tapButton(tester, 'Unirme');
@@ -107,7 +189,10 @@ void main() {
 
     testWidgets('closes after joining', (tester) async {
       String? used;
-      final results = await pumpPushed(tester, JoinWithCodeScreen(onJoin: (c) async => used = c));
+      final results = await pumpPushed(
+        tester,
+        JoinWithCodeScreen(onJoin: (c) async => used = c),
+      );
       await tester.enterText(find.byType(TextField), 'k7m2pq');
       await tapButton(tester, 'Unirme');
       expect(used, 'K7M2PQ');

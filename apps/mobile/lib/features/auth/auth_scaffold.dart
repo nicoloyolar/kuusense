@@ -172,7 +172,8 @@ class AuthScaffold extends StatelessWidget {
 void showAuthHelp(BuildContext context) => showKuuInfo(
   context,
   title: '¿Necesitas ayuda?',
-  message: 'Si tienes problemas para ingresar, escríbenos al canal de soporte de KúuSense.',
+  message:
+      'Si tienes problemas para ingresar, escríbenos al canal de soporte de KúuSense.',
   icon: Icons.support_agent_rounded,
 );
 

@@ -3,8 +3,9 @@ import 'dart:math';
 /// Firestore layout (see firebase/firestore.rules for who can do what):
 ///
 /// ```
-/// tutors/{uid}                                 Tutor
-/// staff/{uid}                                  StaffMember (written by admin tooling only)
+/// tutors/{uid}                                 Tutor          the tutor and admins
+/// tutors/{uid}/public/card                     TutorCard      any active tutor (get only)
+/// staff/{uid}                                  StaffMember    the member and admins
 /// children/{childId}                           Child          research-visible, pseudonymous
 /// children/{childId}/private/profile           ChildProfile   linked tutors and admins
 /// children/{childId}/sessions/{sessionId}      RecordingSession
@@ -12,6 +13,8 @@ import 'dart:math';
 /// ```
 abstract final class Collections {
   static const tutors = 'tutors';
+  static const tutorPublic = 'public';
+  static const tutorCardDoc = 'card';
   static const staff = 'staff';
   static const children = 'children';
   static const childPrivate = 'private';
@@ -24,6 +27,11 @@ abstract final class StoragePaths {
   static String sessionDir(String childId, String sessionId) =>
       'children/$childId/sessions/$sessionId';
 
+  /// A tutor's profile photo. A new name on every change, so caches never
+  /// show the old one.
+  static String tutorPhoto(String uid, int atMs, {bool png = false}) =>
+      'tutors/$uid/photo-$atMs.${png ? 'png' : 'jpg'}';
+
   /// Per-second summary uploaded with each session (see [parseSignalsCsv]).
   static const signalsFile = 'signals.csv';
 }
@@ -35,7 +43,8 @@ const _codeAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 String _randomCode(int length, [Random? rng]) {
   final r = rng ?? Random.secure();
-  return List.generate(length, (_) => _codeAlphabet[r.nextInt(_codeAlphabet.length)]).join();
+  return List.generate(
+      length, (_) => _codeAlphabet[r.nextInt(_codeAlphabet.length)]).join();
 }
 
 // ------------------------------------------------------------------ tutors
@@ -63,6 +72,7 @@ class Tutor {
     required this.createdAtMs,
     this.email = '',
     this.active = true,
+    this.photoPath,
   });
 
   final String uid;
@@ -78,6 +88,10 @@ class Tutor {
   /// A deactivated tutor cannot see or record anything.
   final bool active;
 
+  /// Optional profile photo in Storage ([StoragePaths.tutorPhoto]); only the
+  /// tutor and admins can open it.
+  final String? photoPath;
+
   factory Tutor.fromMap(String uid, Map<String, dynamic> m) => Tutor(
         uid: uid,
         displayName: m['displayName'] as String? ?? '',
@@ -85,6 +99,7 @@ class Tutor {
         createdAtMs: _ms(m['createdAtMs']),
         email: m['email'] as String? ?? '',
         active: m['active'] as bool? ?? true,
+        photoPath: m['photoPath'] as String?,
       );
 
   Map<String, dynamic> toMap() => {
@@ -92,7 +107,45 @@ class Tutor {
         'type': type.name,
         'email': email,
         'active': active,
+        if (photoPath != null) 'photoPath': photoPath,
         'createdAtMs': createdAtMs,
+      };
+
+  /// What other tutors may see (never the email).
+  TutorCard get card => TutorCard(
+        uid: uid,
+        displayName: displayName,
+        type: type,
+        photoPath: photoPath,
+      );
+}
+
+/// The part of a tutor that co-tutors of the same child can see: name, type
+/// and photo, never the email. Kept equal to [Tutor] by the repository (the
+/// rules reject a card that differs from its tutor doc).
+class TutorCard {
+  TutorCard({
+    required this.uid,
+    required this.displayName,
+    required this.type,
+    this.photoPath,
+  });
+  final String uid;
+  final String displayName;
+  final TutorType type;
+  final String? photoPath;
+
+  factory TutorCard.fromMap(String uid, Map<String, dynamic> m) => TutorCard(
+        uid: uid,
+        displayName: m['displayName'] as String? ?? '',
+        type: TutorType.values.asNameMap()[m['type']] ?? TutorType.family,
+        photoPath: m['photoPath'] as String?,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'displayName': displayName,
+        'type': type.name,
+        'photoPath': photoPath,
       };
 }
 
@@ -108,21 +161,47 @@ enum StaffRole {
       };
 }
 
-/// Research team / KúuSense admin. These docs are created with admin tooling
-/// (`make staff`), never from the apps.
+/// Research team / KúuSense admin. Researchers are created by an admin in
+/// the web platform; admins only with admin tooling (`make staff`).
 class StaffMember {
-  StaffMember({required this.uid, required this.role});
+  StaffMember({
+    required this.uid,
+    required this.role,
+    this.displayName = '',
+    this.email = '',
+    this.active = true,
+    this.createdAtMs = 0,
+  });
   final String uid;
   final StaffRole role;
 
-  factory StaffMember.fromMap(String uid, Map<String, dynamic> m) => StaffMember(
+  /// Empty for older staff docs created with only a role.
+  final String displayName;
+  final String email;
+
+  /// A deactivated member cannot use the web platform or read research data.
+  final bool active;
+  final int createdAtMs;
+
+  factory StaffMember.fromMap(String uid, Map<String, dynamic> m) =>
+      StaffMember(
         uid: uid,
         role: StaffRole.values.asNameMap()[m['role']] ?? StaffRole.researcher,
+        displayName: m['displayName'] as String? ?? '',
+        email: m['email'] as String? ?? '',
+        active: m['active'] as bool? ?? true,
+        createdAtMs: _ms(m['createdAtMs']),
       );
 
   bool get isAdmin => role == StaffRole.admin;
 
-  Map<String, dynamic> toMap() => {'role': role.name};
+  Map<String, dynamic> toMap() => {
+        'role': role.name,
+        'displayName': displayName,
+        'email': email,
+        'active': active,
+        'createdAtMs': createdAtMs,
+      };
 }
 
 // ------------------------------------------------------------------ children (NNA)
@@ -175,7 +254,8 @@ class Child {
   final int createdAtMs;
 
   /// Age in whole years as of [now], from the birth year only (±1 year).
-  int approximateAge([DateTime? now]) => (now ?? DateTime.now()).year - birthYear;
+  int approximateAge([DateTime? now]) =>
+      (now ?? DateTime.now()).year - birthYear;
 
   factory Child.fromMap(String id, Map<String, dynamic> m) => Child(
         id: id,
@@ -203,7 +283,8 @@ class Child {
 
 /// The private part of a child, visible only to linked tutors and admins.
 class ChildProfile {
-  ChildProfile({required this.displayName, required this.avatarId});
+  ChildProfile(
+      {required this.displayName, required this.avatarId, this.birthDate});
 
   /// Nickname or display name chosen by the tutor.
   final String displayName;
@@ -211,12 +292,46 @@ class ChildProfile {
   /// One of the predefined avatars bundled with the app (no photos).
   final String avatarId;
 
+  /// Full date of birth as `YYYY-MM-DD` (a calendar date, not an instant, so
+  /// it has no time zone). Private: researchers only see [Child.birthYear].
+  /// Null for children registered before it existed.
+  final String? birthDate;
+
+  /// [birthDate] parsed, or null when missing or malformed.
+  DateTime? get birthDateValue => parseBirthDate(birthDate);
+
+  /// Exact age in whole years as of [now], or null without [birthDate].
+  int? exactAge([DateTime? now]) {
+    final b = birthDateValue;
+    if (b == null) return null;
+    final n = now ?? DateTime.now();
+    final hadBirthday =
+        n.month > b.month || (n.month == b.month && n.day >= b.day);
+    return n.year - b.year - (hadBirthday ? 0 : 1);
+  }
+
+  static String formatBirthDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  static DateTime? parseBirthDate(String? s) {
+    final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(s ?? '');
+    if (m == null) return null;
+    final d = DateTime(int.parse(m[1]!), int.parse(m[2]!), int.parse(m[3]!));
+    // Reject impossible dates such as 2020-02-31 (DateTime rolls them over).
+    return formatBirthDate(d) == s ? d : null;
+  }
+
   factory ChildProfile.fromMap(Map<String, dynamic> m) => ChildProfile(
         displayName: m['displayName'] as String? ?? '',
         avatarId: m['avatarId'] as String? ?? '',
+        birthDate: m['birthDate'] as String?,
       );
 
-  Map<String, dynamic> toMap() => {'displayName': displayName, 'avatarId': avatarId};
+  Map<String, dynamic> toMap() => {
+        'displayName': displayName,
+        'avatarId': avatarId,
+        if (birthDate != null) 'birthDate': birthDate,
+      };
 }
 
 // ------------------------------------------------------------------ invites
@@ -373,7 +488,14 @@ enum SessionActivity {
 /// Context of a session, filled in by the tutor when recording starts. Every
 /// field is optional so the tutor can skip it. No personal data: only kinds.
 class SessionContext {
-  const SessionContext({this.place, this.activity, this.present = const []});
+  const SessionContext({
+    this.place,
+    this.activity,
+    this.present = const [],
+    this.comment,
+  });
+
+  static const commentMaxLength = 500;
 
   final SessionPlace? place;
   final SessionActivity? activity;
@@ -381,7 +503,15 @@ class SessionContext {
   /// Kinds of tutors present during the session.
   final List<TutorType> present;
 
-  bool get isEmpty => place == null && activity == null && present.isEmpty;
+  /// Free text from the tutor: where the sensor was worn, circumstances…
+  /// Researchers see it, so the app asks not to write names.
+  final String? comment;
+
+  bool get isEmpty =>
+      place == null &&
+      activity == null &&
+      present.isEmpty &&
+      (comment ?? '').isEmpty;
 
   factory SessionContext.fromMap(Map<String, dynamic> m) => SessionContext(
         place: SessionPlace.values.asNameMap()[m['place']],
@@ -390,12 +520,14 @@ class SessionContext {
           for (final t in (m['present'] as List? ?? const []))
             if (TutorType.values.asNameMap()[t] case final type?) type,
         ],
+        comment: m['comment'] as String?,
       );
 
   Map<String, dynamic> toMap() => {
         'place': place?.name,
         'activity': activity?.name,
         'present': [for (final t in present) t.name],
+        if ((comment ?? '').trim().isNotEmpty) 'comment': comment!.trim(),
       };
 }
 
@@ -431,7 +563,9 @@ abstract final class BehaviorCatalog {
   /// Display label for a stored event kind (unknown ids are shown as is).
   static String labelOf(String id) => id == noteId
       ? 'Nota'
-      : markers.firstWhere((m) => m.id == id, orElse: () => BehaviorMarker(id, id)).label;
+      : markers
+          .firstWhere((m) => m.id == id, orElse: () => BehaviorMarker(id, id))
+          .label;
 }
 
 /// One marked event in a session. [atMs] is phone time; the same event is
@@ -452,7 +586,9 @@ class SessionEvent {
   /// Free text, only for notes.
   final String? note;
 
-  String get label => kind == BehaviorCatalog.noteId ? (note ?? '') : BehaviorCatalog.labelOf(kind);
+  String get label => kind == BehaviorCatalog.noteId
+      ? (note ?? '')
+      : BehaviorCatalog.labelOf(kind);
 
   factory SessionEvent.fromMap(Map<String, dynamic> m) => SessionEvent(
         atMs: _ms(m['atMs']),
@@ -523,19 +659,23 @@ class RecordingSession {
   final List<SessionGap> gaps;
 
   /// Ended by itself (device lost or app closed) instead of by the tutor.
-  bool get isIncomplete => endReason != null && endReason != SessionEndReason.stopped;
+  bool get isIncomplete =>
+      endReason != null && endReason != SessionEndReason.stopped;
 
-  Duration get duration =>
-      Duration(milliseconds: (endedAtMs ?? DateTime.now().millisecondsSinceEpoch) - startedAtMs);
+  Duration get duration => Duration(
+      milliseconds:
+          (endedAtMs ?? DateTime.now().millisecondsSinceEpoch) - startedAtMs);
 
-  factory RecordingSession.fromMap(String id, Map<String, dynamic> m) => RecordingSession(
+  factory RecordingSession.fromMap(String id, Map<String, dynamic> m) =>
+      RecordingSession(
         id: id,
         childId: m['childId'] as String? ?? '',
         deviceId: m['deviceId'] as String? ?? '',
         createdByUid: m['createdByUid'] as String? ?? '',
         startedAtMs: _ms(m['startedAtMs']),
         endedAtMs: m['endedAtMs'] == null ? null : _ms(m['endedAtMs']),
-        status: SessionStatus.values.asNameMap()[m['status']] ?? SessionStatus.failed,
+        status: SessionStatus.values.asNameMap()[m['status']] ??
+            SessionStatus.failed,
         packetCount: _ms(m['packetCount']),
         streams: List<String>.from(m['streams'] as List? ?? const []),
         files: Map<String, String>.from(m['files'] as Map? ?? const {}),
@@ -545,14 +685,16 @@ class RecordingSession {
         appVersion: m['appVersion'] as String? ?? '',
         context: m['context'] == null
             ? const SessionContext()
-            : SessionContext.fromMap(Map<String, dynamic>.from(m['context'] as Map)),
+            : SessionContext.fromMap(
+                Map<String, dynamic>.from(m['context'] as Map)),
         events: [
           for (final e in (m['events'] as List? ?? const []))
             SessionEvent.fromMap(Map<String, dynamic>.from(e as Map)),
         ],
         stats: m['stats'] == null
             ? null
-            : SessionStats.fromMap(Map<String, dynamic>.from(m['stats'] as Map)),
+            : SessionStats.fromMap(
+                Map<String, dynamic>.from(m['stats'] as Map)),
         endReason: SessionEndReason.values.asNameMap()[m['endReason']],
         gaps: [
           for (final g in (m['gaps'] as List? ?? const []))

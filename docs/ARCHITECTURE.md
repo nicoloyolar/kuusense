@@ -114,12 +114,15 @@ Definido en `packages/kuusense_models/lib/src/models.dart`.
 
 | Ruta | Contenido | Quién lo ve |
 |---|---|---|
-| `tutors/{uid}` | Nombre visible, tipo (familiar, docente o terapeuta), correo y si está activo. La contraseña queda solo en Auth | El propio tutor y el admin |
-| `staff/{uid}` | Rol: investigador o admin. Se crea solo con herramientas de administración (`make staff`) | El propio usuario |
+| `tutors/{uid}` | Nombre visible, tipo (familiar, docente o terapeuta), correo, si está activo y la ruta de su foto de perfil opcional (en Storage, `tutors/{uid}/photo-<ms>.jpg`). La contraseña queda solo en Auth | El propio tutor y el admin |
+| `tutors/{uid}/public/card` | Tarjeta pública del tutor: nombre, tipo y foto (nunca el correo). Se actualiza junto con el perfil | Cualquier tutor activo y el admin, solo pidiéndola por id (no se listan). En la práctica, los tutores que comparten un NNA |
+| `staff/{uid}` | Rol (investigador o admin), nombre, correo, si está activo y fecha de creación. Los investigadores los crea, edita y desactiva el admin desde la web (mantenedor de Investigadores). Los admins se crean solo con herramientas de administración (`make staff`) | El propio usuario y el admin |
 | `children/{id}` | **Parte de investigación del NNA:** código seudónimo (`N-4F7Q`), año de nacimiento, cuadrante de Dunn, responsable, tutores vinculados y fecha de confirmación del consentimiento | Tutores vinculados y staff |
-| `children/{id}/private/profile` | **Parte privada:** apodo y avatar predefinido (sin fotos) | Tutores vinculados y admin (nunca investigadores) |
+| `children/{id}/private/profile` | **Parte privada:** apodo, avatar predefinido (sin fotos) y fecha de nacimiento completa (`AAAA-MM-DD`, opcional en registros antiguos). La parte de investigación solo tiene el año | Tutores vinculados y admin (nunca investigadores) |
 | `children/{id}/sessions/{id}` | Metadatos de cada grabación | Tutores vinculados y staff |
 | `invites/{código}` | Código de invitación de 6 caracteres, válido por 48 h y de un solo uso | Se consulta por código exacto, nunca se lista |
+
+**Sesiones de inicio:** en la app móvil la sesión del tutor se mantiene hasta que cierra sesión. En la plataforma web la sesión **nunca persiste**: dura mientras la pestaña está abierta (sobrevive a recargar la página) y termina al cerrar la pestaña o el navegador.
 
 **Roles:** administrador, investigador y tutor. Una misma cuenta puede tener más de uno (por ejemplo, admin y tutor).
 
@@ -127,11 +130,12 @@ Definido en `packages/kuusense_models/lib/src/models.dart`.
 - **Solo el admin crea tutores**, desde la plataforma web (sección Tutores). La app no tiene registro. La cuenta se crea con una contraseña aleatoria y el tutor recibe un correo para elegir la suya. Se hace con una segunda instancia de Firebase en el navegador, sin Cloud Functions. Si el correo ya tiene cuenta (por ejemplo, alguien del staff), se habilita con `make tutor`.
 - El admin edita y **desactiva** tutores (no los borra). Un tutor desactivado conserva sus vínculos, pero las reglas le niegan todo acceso a NNA, sesiones e invitaciones.
 - **El NNA lo registra un tutor (app) o el admin (web, sección NNA) eligiendo el tutor responsable.** Ambos usan el mismo formulario compartido (`KuuChildForm` en `shared/kuusense_ui`), con confirmación de consentimiento.
-- El admin edita al NNA, elige qué tutores lo acompañan y quién es el responsable, y puede eliminarlo. Lee el apodo y avatar; los investigadores nunca.
+- El admin edita al NNA, elige qué tutores lo acompañan y quién es el responsable, y puede eliminarlo. Lee el apodo, el avatar y la fecha de nacimiento; los investigadores nunca.
 - Los tutores vinculados editan el perfil, invitan a otros tutores y graban sesiones. Por ahora, todos los tipos de tutor tienen los mismos permisos.
 - Solo el responsable elimina al NNA o desvincula a otros. Cualquier tutor puede desvincularse.
 - Para unirse, un tutor se agrega a sí mismo y borra la invitación en la misma operación. Así la invitación no se reutiliza, sin necesidad de Cloud Functions.
 - Los investigadores leen la parte de investigación y todas las sesiones, pero nunca la parte privada ni los datos de los tutores. No modifican nada.
+- La foto de perfil del tutor (JPEG o PNG, menos de 2 MB, unos 512 px) la sube, cambia o quita el propio tutor. La ven él, el admin y los otros tutores activos (los que comparten un NNA la encuentran en su tarjeta pública). Nunca los investigadores. Los NNA no tienen fotos, solo avatares predefinidos.
 - Solo el teléfono que grabó una sesión sube sus archivos. Los datos crudos solo los descarga el staff.
 - Las sesiones no se borran desde las apps. La eliminación queda sujeta a la política de retención, que se implementará con herramientas de administración.
 

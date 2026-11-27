@@ -2,172 +2,197 @@ import 'package:flutter/material.dart';
 import 'package:kuusense_firebase/kuusense_firebase.dart';
 import 'package:kuusense_ui/kuusense_ui.dart';
 
-import 'dash_page.dart';
-import 'session_detail_page.dart';
+import '../common/data_table.dart';
+import '../common/panel.dart';
+import 'session_cells.dart';
 
-/// Recorded sessions grouped by day, newest first, optionally filtered to
-/// one NNA.
-class SessionsPage extends StatelessWidget {
+enum _StateFilter { all, recording, complete, incomplete, failed }
+
+/// Every recorded session in one sortable, filterable table.
+class SessionsPage extends StatefulWidget {
   const SessionsPage({
     super.key,
-    required this.repo,
     required this.children,
     required this.sessions,
+    required this.profiles,
     required this.childFilter,
     required this.onFilter,
+    required this.onOpenSession,
   });
 
-  final KuusenseRepository repo;
   final List<Child> children;
   final List<RecordingSession> sessions;
+  final Map<String, ChildProfile> profiles;
   final String? childFilter;
   final ValueChanged<String?> onFilter;
+  final ValueChanged<RecordingSession> onOpenSession;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final codes = {for (final c in children) c.id: c.code};
-    final visible = childFilter == null
-        ? sessions
-        : sessions.where((s) => s.childId == childFilter).toList();
-
-    // Group by calendar day (sessions arrive newest first).
-    final groups = <DateTime, List<RecordingSession>>{};
-    for (final s in visible) {
-      final d = DateTime.fromMillisecondsSinceEpoch(s.startedAtMs);
-      groups.putIfAbsent(DateTime(d.year, d.month, d.day), () => []).add(s);
-    }
-
-    return DashPage(
-      children: [
-        Text(
-          'Sesiones',
-          style: theme.textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: KuuSpacing.xs),
-        Text(
-          '${visible.length} ${visible.length == 1 ? 'sesión' : 'sesiones'}'
-          '${childFilter == null ? '' : ' de ${codes[childFilter] ?? ''}'}, de la más reciente a la más antigua.',
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: KuuSpacing.lg),
-        Wrap(
-          spacing: KuuSpacing.sm,
-          runSpacing: KuuSpacing.sm,
-          children: [
-            ChoiceChip(
-              label: const Text('Todos'),
-              selected: childFilter == null,
-              onSelected: (_) => onFilter(null),
-            ),
-            for (final c in children)
-              ChoiceChip(
-                label: Text(c.code),
-                selected: childFilter == c.id,
-                onSelected: (on) => onFilter(on ? c.id : null),
-              ),
-          ],
-        ),
-        const SizedBox(height: KuuSpacing.lg),
-        if (visible.isEmpty)
-          KuuSurface(
-            child: Padding(
-              padding: const EdgeInsets.all(KuuSpacing.xl),
-              child: Column(
-                children: [
-                  const KuuIconTile(
-                    icon: Icons.monitor_heart_rounded,
-                    color: KuuColor.brandHighlight,
-                    size: 64,
-                    round: true,
-                  ),
-                  const SizedBox(height: KuuSpacing.md),
-                  Text(
-                    'No hay sesiones todavía',
-                    style: theme.textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: KuuSpacing.xs),
-                  Text(
-                    'Se graban desde la app móvil con el EmotiBit.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          for (final entry in groups.entries) ...[
-            Padding(
-              padding: const EdgeInsets.only(
-                top: KuuSpacing.md,
-                bottom: KuuSpacing.sm,
-              ),
-              child: Text(
-                _capitalize(formatDayHeading(entry.key)),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-            for (final s in entry.value)
-              Padding(
-                padding: const EdgeInsets.only(bottom: KuuSpacing.md),
-                child: KuuSessionTile(
-                  session: s,
-                  title: codes[s.childId] ?? '—',
-                  compact: MediaQuery.sizeOf(context).width < 700,
-                  trailingStatus: s.status == SessionStatus.uploaded
-                      ? null
-                      : SessionStatusIcon(status: s.status),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => SessionDetailPage(
-                        repo: repo,
-                        childId: s.childId,
-                        sessionId: s.id,
-                        childCode: codes[s.childId] ?? '—',
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        if (sessions.length >= 200)
-          Text(
-            'Se muestran las 200 sesiones más recientes.',
-            style: theme.textTheme.bodySmall,
-          ),
-      ],
-    );
-  }
+  State<SessionsPage> createState() => _SessionsPageState();
 }
 
-String _capitalize(String s) =>
-    s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+class _SessionsPageState extends State<SessionsPage> {
+  _StateFilter _state = _StateFilter.all;
+  SessionOutcome? _outcome;
+  String _query = '';
 
-/// Small colored icon for a session's upload state.
-class SessionStatusIcon extends StatelessWidget {
-  const SessionStatusIcon({super.key, required this.status});
-  final SessionStatus status;
+  bool _matchesState(RecordingSession s) => switch (_state) {
+    _StateFilter.all => true,
+    _StateFilter.recording =>
+      s.status == SessionStatus.recording ||
+          s.status == SessionStatus.uploading,
+    _StateFilter.complete =>
+      s.status == SessionStatus.uploaded && !s.isIncomplete,
+    _StateFilter.incomplete =>
+      s.status == SessionStatus.uploaded && s.isIncomplete,
+    _StateFilter.failed => s.status == SessionStatus.failed,
+  };
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final (icon, color) = switch (status) {
-      SessionStatus.recording => (Icons.fiber_manual_record, scheme.error),
-      SessionStatus.uploading => (Icons.cloud_upload_outlined, scheme.primary),
-      SessionStatus.uploaded => (Icons.cloud_done_outlined, scheme.secondary),
-      SessionStatus.failed => (Icons.error_outline_rounded, scheme.error),
-    };
-    return Tooltip(
-      message: sessionStatusLabel(status),
-      child: Icon(icon, color: color),
+    final codes = {for (final c in widget.children) c.id: c.code};
+    final q = _query.trim().toLowerCase();
+    final rows = widget.sessions.where((s) {
+      if (widget.childFilter != null && s.childId != widget.childFilter) {
+        return false;
+      }
+      if (!_matchesState(s)) return false;
+      if (_outcome != null && SessionOutcome.of(s) != _outcome) return false;
+      if (q.isNotEmpty) {
+        final hay =
+            '${codes[s.childId] ?? ''} ${widget.profiles[s.childId]?.displayName ?? ''} ${s.deviceId}'
+                .toLowerCase();
+        if (!hay.contains(q)) return false;
+      }
+      return true;
+    }).toList();
+
+    return KuuPageBody(
+      children: [
+        const KuuPageHeader(
+          title: 'Sesiones',
+          subtitle:
+              'Grabaciones de todos los NNA. Haz clic en una fila para ver sus señales y archivos.',
+        ),
+        const SizedBox(height: KuuSpacing.lg),
+        KuuDataTable<RecordingSession>(
+          rows: rows,
+          rowKey: (s) => '${s.childId}/${s.id}',
+          onRowTap: widget.onOpenSession,
+          initialSort: 1,
+          initialAscending: false,
+          emptyText: 'No hay sesiones con estos filtros.',
+          minWidth: 1100,
+          toolbar: KuuToolbar(
+            children: [
+              KuuSearchField(
+                hint: 'Buscar por NNA o dispositivo',
+                onChanged: (v) => setState(() => _query = v),
+              ),
+              KuuFilter<String?>(
+                label: 'NNA',
+                value: widget.childFilter,
+                options: [
+                  (null, 'Todos'),
+                  for (final c in widget.children) (c.id, c.code),
+                ],
+                onChanged: widget.onFilter,
+                width: 160,
+              ),
+              KuuFilter<_StateFilter>(
+                label: 'Estado',
+                value: _state,
+                options: const [
+                  (_StateFilter.all, 'Todos'),
+                  (_StateFilter.recording, 'En curso'),
+                  (_StateFilter.complete, 'Completas'),
+                  (_StateFilter.incomplete, 'Incompletas'),
+                  (_StateFilter.failed, 'Fallidas'),
+                ],
+                onChanged: (v) => setState(() => _state = v),
+                width: 160,
+              ),
+              KuuFilter<SessionOutcome?>(
+                label: 'Resultado',
+                value: _outcome,
+                options: [
+                  (null, 'Todos'),
+                  for (final o in SessionOutcome.values) (o, o.label),
+                ],
+                onChanged: (v) => setState(() => _outcome = v),
+                width: 180,
+              ),
+            ],
+          ),
+          columns: [
+            KuuColumn(
+              label: 'NNA',
+              flex: 3,
+              sortBy: (s) =>
+                  widget.profiles[s.childId]?.displayName.toLowerCase() ??
+                  codes[s.childId] ??
+                  '',
+              cell: (s) => ChildCell(
+                code: codes[s.childId] ?? '—',
+                profile: widget.profiles[s.childId],
+              ),
+            ),
+            KuuColumn(
+              label: 'Fecha',
+              flex: 3,
+              sortBy: (s) => s.startedAtMs,
+              cell: (s) => SessionWhenCell(s),
+            ),
+            KuuColumn(
+              label: 'Duración',
+              flex: 2,
+              sortBy: (s) => s.duration.inSeconds,
+              cell: (s) => Text(formatDuration(s.duration)),
+            ),
+            KuuColumn(
+              label: 'Lugar',
+              flex: 2,
+              sortBy: (s) => s.context.place?.label ?? '',
+              cell: (s) => s.context.place == null
+                  ? const MutedText('—')
+                  : Text(s.context.place!.label),
+            ),
+            KuuColumn(
+              label: 'Actividad',
+              flex: 2,
+              sortBy: (s) => s.context.activity?.label ?? '',
+              cell: (s) => s.context.activity == null
+                  ? const MutedText('—')
+                  : Text(s.context.activity!.label),
+            ),
+            KuuColumn(
+              label: 'Eventos',
+              flex: 1,
+              alignEnd: true,
+              sortBy: (s) => s.events.length,
+              cell: (s) => Text('${s.events.length}'),
+            ),
+            KuuColumn(
+              label: 'Resultado',
+              flex: 2,
+              sortBy: (s) => SessionOutcome.of(s).index,
+              cell: (s) => SessionOutcomeBadge(s),
+            ),
+            KuuColumn(
+              label: 'Estado',
+              flex: 2,
+              sortBy: (s) => sessionState(s).$1,
+              cell: (s) => SessionStateBadge(s),
+            ),
+            KuuColumn(
+              label: 'Dispositivo',
+              flex: 2,
+              sortBy: (s) => s.deviceId,
+              cell: (s) => MutedText(s.deviceId.isEmpty ? '—' : s.deviceId),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

@@ -68,10 +68,13 @@ abstract final class BackgroundRecording {
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'recording',
         channelName: 'Grabación de sesiones',
-        channelDescription: 'Aviso mientras se graba una sesión con el EmotiBit',
+        channelDescription:
+            'Aviso mientras se graba una sesión con el EmotiBit',
         onlyAlertOnce: true,
       ),
-      iosNotificationOptions: const IOSNotificationOptions(showNotification: false),
+      iosNotificationOptions: const IOSNotificationOptions(
+        showNotification: false,
+      ),
       foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.nothing(),
         allowWakeLock: true,

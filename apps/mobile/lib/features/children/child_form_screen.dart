@@ -8,7 +8,12 @@ export 'package:kuusense_ui/kuusense_ui.dart' show ChildFormData;
 /// Registers a new child or edits one, with the shared [KuuChildForm]
 /// (same form as the web platform). Pops `true` once saved.
 class ChildFormScreen extends StatelessWidget {
-  const ChildFormScreen({super.key, required this.onSubmit, this.initial, this.now});
+  const ChildFormScreen({
+    super.key,
+    required this.onSubmit,
+    this.initial,
+    this.now,
+  });
 
   /// Null when registering a new child.
   final ChildFormData? initial;
@@ -20,7 +25,9 @@ class ChildFormScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(initial == null ? 'Registrar niño/a' : 'Editar datos')),
+      appBar: AppBar(
+        title: Text(initial == null ? 'Registrar niño/a' : 'Editar datos'),
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -31,7 +38,10 @@ class ChildFormScreen extends StatelessWidget {
                 initial: initial,
                 now: now,
                 onSubmit: (data) async {
-                  final ok = await runWithFeedback(context, () => onSubmit(data));
+                  final ok = await runWithFeedback(
+                    context,
+                    () => onSubmit(data),
+                  );
                   if (ok && context.mounted) Navigator.of(context).pop(true);
                   return ok;
                 },

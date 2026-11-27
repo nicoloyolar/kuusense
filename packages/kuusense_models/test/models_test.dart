@@ -39,8 +39,32 @@ void main() {
     expect(back.approximateAge(DateTime(2026)), 8);
   });
 
+  test('private profile keeps the full birth date and gives the exact age', () {
+    final p = ChildProfile.fromMap(
+        {'displayName': 'Tomi', 'avatarId': 'sun', 'birthDate': '2018-03-14'});
+    expect(p.birthDateValue, DateTime(2018, 3, 14));
+    expect(p.exactAge(DateTime(2026, 3, 13)), 7);
+    expect(p.exactAge(DateTime(2026, 3, 14)), 8);
+    expect(p.toMap()['birthDate'], '2018-03-14');
+    expect(ChildProfile.formatBirthDate(DateTime(1985, 1, 5)), '1985-01-05');
+  });
+
+  test('older profiles without a birth date and malformed dates', () {
+    final old =
+        ChildProfile.fromMap({'displayName': 'Tomi', 'avatarId': 'sun'});
+    expect(old.exactAge(), isNull);
+    expect(old.toMap().containsKey('birthDate'), isFalse);
+    expect(ChildProfile.parseBirthDate('2020-02-31'), isNull);
+    expect(ChildProfile.parseBirthDate('14-03-2018'), isNull);
+  });
+
   test('invite expiry', () {
-    final i = Invite(code: 'X', childId: 'c', createdByUid: 'a', createdAtMs: 0, expiresAtMs: 1000);
+    final i = Invite(
+        code: 'X',
+        childId: 'c',
+        createdByUid: 'a',
+        createdAtMs: 0,
+        expiresAtMs: 1000);
     expect(i.isExpired(DateTime.fromMillisecondsSinceEpoch(999)), isFalse);
     expect(i.isExpired(DateTime.fromMillisecondsSinceEpoch(1000)), isTrue);
   });
@@ -53,7 +77,8 @@ void main() {
       batteryStart: 88,
       batteryEnd: 81,
     );
-    final s = RecordingSession.fromMap('s', {'status': 'uploaded', 'stats': stats.toMap()});
+    final s = RecordingSession.fromMap(
+        's', {'status': 'uploaded', 'stats': stats.toMap()});
     expect(s.stats!.heartRate!.mean, 65.2);
     expect(s.stats!.eda, isNull);
     expect(s.stats!.scrCount, 18);
@@ -70,7 +95,8 @@ void main() {
     expect(points.last.eda, 6.0);
   });
 
-  test('session end reason and gaps round-trip; old sessions stay complete', () {
+  test('session end reason and gaps round-trip; old sessions stay complete',
+      () {
     final s = RecordingSession.fromMap('s', {
       'status': 'uploaded',
       'endReason': 'deviceLost',
@@ -97,10 +123,17 @@ void main() {
   });
 
   test('tutors created before email/active existed read as active', () {
-    final old = Tutor.fromMap('u', {'displayName': 'Ana', 'type': 'teacher', 'createdAtMs': 1});
+    final old = Tutor.fromMap(
+        'u', {'displayName': 'Ana', 'type': 'teacher', 'createdAtMs': 1});
     expect(old.active, isTrue);
     expect(old.email, '');
-    final t = Tutor(uid: 'u', displayName: 'Ana', type: TutorType.family, createdAtMs: 1, email: 'a@b.cl', active: false);
+    final t = Tutor(
+        uid: 'u',
+        displayName: 'Ana',
+        type: TutorType.family,
+        createdAtMs: 1,
+        email: 'a@b.cl',
+        active: false);
     final back = Tutor.fromMap('u', t.toMap());
     expect(back.email, 'a@b.cl');
     expect(back.active, isFalse);

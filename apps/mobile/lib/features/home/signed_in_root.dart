@@ -53,13 +53,18 @@ class _SignedInRootState extends State<SignedInRoot> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(genericErrorMessage, textAlign: TextAlign.center),
-                  TextButton(onPressed: _signOut, child: const Text('Cerrar sesión')),
+                  TextButton(
+                    onPressed: _signOut,
+                    child: const Text('Cerrar sesión'),
+                  ),
                 ],
               ),
             ),
           );
         }
-        if (snap.connectionState == ConnectionState.waiting) return const LoadingView();
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const LoadingView();
+        }
         final tutor = snap.data;
         if (tutor == null || !tutor.active) {
           return _NotEnabled(deactivated: tutor != null, onSignOut: _signOut);
@@ -97,7 +102,9 @@ class _NotEnabled extends StatelessWidget {
                     const KuusenseLogo(height: 96),
                     const SizedBox(height: KuuSpacing.lg),
                     Text(
-                      deactivated ? 'Tu cuenta está desactivada' : 'Tu cuenta no está habilitada',
+                      deactivated
+                          ? 'Tu cuenta está desactivada'
+                          : 'Tu cuenta no está habilitada',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.headlineSmall,
                     ),
@@ -105,11 +112,15 @@ class _NotEnabled extends StatelessWidget {
                     Text(
                       'Contacta al administrador de KúuSense para que habilite tu cuenta de tutor.',
                       textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: KuuSpacing.lg),
-                    OutlinedButton(onPressed: onSignOut, child: const Text('Cerrar sesión')),
+                    OutlinedButton(
+                      onPressed: onSignOut,
+                      child: const Text('Cerrar sesión'),
+                    ),
                   ],
                 ),
               ),

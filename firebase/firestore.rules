@@ -21,7 +21,11 @@ service cloud.firestore {
     function docPath(collection, id) {
       return /databases/$(database)/documents/$(collection)/$(id);
     }
-    function isStaff() { return signedIn() && exists(docPath('staff', request.auth.uid)); }
+    // A deactivated staff member (active == false) loses every staff right.
+    function isStaff() {
+      return signedIn() && exists(docPath('staff', request.auth.uid))
+        && get(docPath('staff', request.auth.uid)).data.get('active', true) == true;
+    }
     function isAdmin() {
       return isStaff() && get(docPath('staff', request.auth.uid)).data.role == 'admin';
     }
@@ -40,12 +44,14 @@ service cloud.firestore {
     // ---------------------------------------------------------------- tutors
     match /tutors/{tutorId} {
       function validTutor(d) {
-        return d.keys().hasOnly(['displayName', 'type', 'email', 'active', 'createdAtMs'])
+        return d.keys().hasOnly(['displayName', 'type', 'email', 'active', 'photoPath', 'createdAtMs'])
           && d.keys().hasAll(['displayName', 'type', 'createdAtMs'])
           && d.displayName is string && d.displayName.size() >= 1 && d.displayName.size() <= 60
           && d.type in ['family', 'teacher', 'therapist']
           && d.get('email', '') is string && d.get('email', '').size() <= 254
           && d.get('active', true) is bool
+          && (d.get('photoPath', null) == null
+              || (d.photoPath is string && d.photoPath.matches('tutors/' + tutorId + '/photo-[0-9]+[.](jpg|png)')))
           && d.createdAtMs is int;
       }
       function isSelf() { return hasAccount() && request.auth.uid == tutorId; }
@@ -57,20 +63,58 @@ service cloud.firestore {
         && request.resource.data.email.size() >= 3
         && request.resource.data.active == true;
       // Admins edit any field but the creation date; an active tutor edits
-      // only their own name and type.
+      // only their own name, type and photo.
       allow update: if validTutor(request.resource.data)
         && request.resource.data.createdAtMs == resource.data.createdAtMs
         && (isAdmin() || (isTutor() && isSelf()
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'type'])));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'type', 'photoPath'])));
       // Account deletion goes through admin tooling (data retention policy).
       allow delete: if false;
+
+      // Public card: name, type and photo (never the email), so co-tutors of
+      // a child can see each other. Read by id only (no listing): a tutor
+      // learns other tutors' ids only from the children they share.
+      match /public/{docId} {
+        function validCard(d) {
+          let t = getAfter(docPath('tutors', tutorId)).data;
+          return docId == 'card'
+            && d.keys().hasOnly(['displayName', 'type', 'photoPath'])
+            && d.displayName == t.displayName
+            && d.type == t.type
+            && d.get('photoPath', null) == t.get('photoPath', null);
+        }
+
+        allow get: if isTutor() || isAdmin();
+        allow create, update: if (isAdmin() || (isTutor() && isSelf()))
+          && validCard(request.resource.data);
+        allow delete: if false;
+      }
     }
 
     // ---------------------------------------------------------------- staff
     // Managed only with admin tooling (Admin SDK bypasses these rules).
     match /staff/{staffId} {
-      allow read: if signedIn() && request.auth.uid == staffId;
-      allow write: if false;
+      function validStaff(d) {
+        return d.keys().hasOnly(['role', 'displayName', 'email', 'active', 'createdAtMs'])
+          && d.keys().hasAll(['role', 'displayName', 'email', 'active', 'createdAtMs'])
+          && d.role in ['admin', 'researcher']
+          && d.displayName is string && d.displayName.size() >= 1 && d.displayName.size() <= 60
+          && d.email is string && d.email.size() >= 3 && d.email.size() <= 254
+          && d.active is bool && d.createdAtMs is int;
+      }
+
+      allow read: if (signedIn() && request.auth.uid == staffId) || isAdmin();
+      // Admins create and manage researchers only. Admin rights are granted
+      // with admin tooling (`make staff`), never from the apps.
+      allow create: if isAdmin() && validStaff(request.resource.data)
+        && request.resource.data.role == 'researcher'
+        && request.resource.data.active == true;
+      // Name and active flag only; an admin never edits their own doc.
+      allow update: if isAdmin() && request.auth.uid != staffId
+        && resource.data.role == 'researcher'
+        && validStaff(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'active']);
+      allow delete: if false;
     }
 
     // ---------------------------------------------------------------- children (NNA)
@@ -81,7 +125,7 @@ service cloud.firestore {
           && d.keys().hasAll(['code', 'birthYear', 'ownerUid', 'tutorUids',
                               'consentConfirmedAtMs', 'createdAtMs'])
           && d.code is string && d.code.matches('N-' + codeChars() + '{4}')
-          && d.birthYear is int && d.birthYear >= 1990 && d.birthYear <= request.time.year()
+          && d.birthYear is int && d.birthYear >= 1920 && d.birthYear <= request.time.year()
           && d.get('dunnQuadrant', null) in [null, 'seeking', 'avoiding', 'sensitivity', 'registration']
           && d.tutorUids is list
           && d.consentConfirmedAtMs is int && d.createdAtMs is int;
@@ -154,10 +198,15 @@ service cloud.firestore {
       match /private/{docId} {
         function validProfile(d) {
           return docId == 'profile'
-            && d.keys().hasOnly(['displayName', 'avatarId'])
+            && d.keys().hasOnly(['displayName', 'avatarId', 'birthDate'])
             && d.keys().hasAll(['displayName', 'avatarId'])
             && d.displayName is string && d.displayName.size() >= 1 && d.displayName.size() <= 40
-            && d.avatarId is string && d.avatarId.size() >= 1 && d.avatarId.size() <= 40;
+            && d.avatarId is string && d.avatarId.size() >= 1 && d.avatarId.size() <= 40
+            // Full date of birth (YYYY-MM-DD), optional for older records.
+            // Private: researchers only see the year on the child document.
+            && (d.get('birthDate', null) == null
+                || (d.birthDate is string
+                    && d.birthDate.matches('(19|20)[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])')));
         }
 
         allow read: if isLinked(childId) || isAdmin();
@@ -176,7 +225,9 @@ service cloud.firestore {
         function validContext(d) {
           return !('context' in d) || (
             d.context is map
-            && d.context.keys().hasOnly(['place', 'activity', 'present'])
+            && d.context.keys().hasOnly(['place', 'activity', 'present', 'comment'])
+            && (!('comment' in d.context)
+                || (d.context.comment is string && d.context.comment.size() <= 500))
             && (!('place' in d.context) || d.context.place == null
                 || d.context.place in ['home', 'school', 'therapy', 'other'])
             && (!('activity' in d.context) || d.context.activity == null

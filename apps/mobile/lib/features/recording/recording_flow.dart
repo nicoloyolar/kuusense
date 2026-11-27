@@ -22,7 +22,9 @@ class RecordingFlow extends StatelessWidget {
             controller.disconnect();
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Detén la grabación antes de salir.')),
+              const SnackBar(
+                content: Text('Detén la grabación antes de salir.'),
+              ),
             );
           }
         },

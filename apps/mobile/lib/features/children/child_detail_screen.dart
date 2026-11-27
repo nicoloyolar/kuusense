@@ -8,6 +8,7 @@ import '../recording/recording_flow.dart';
 import '../history/session_detail_screen.dart';
 import 'child_form_screen.dart';
 import 'invite_sheet.dart';
+import 'tutors_sheet.dart';
 
 /// One child's card: who they are, who follows them, and the actions a
 /// tutor can take (record, invite, edit, leave or delete).
@@ -49,17 +50,12 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
       Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (_) => ChildFormScreen(
-            initial: ChildFormData(
-              displayName: profile.displayName,
-              avatarId: profile.avatarId,
-              birthYear: child.birthYear,
-              dunnQuadrant: child.dunnQuadrant,
-            ),
+            initial: childFormDataOf(child, profile),
             onSubmit: (d) => repo.editChild(
               child.id,
               displayName: d.displayName,
               avatarId: d.avatarId,
-              birthYear: d.birthYear,
+              birthDate: d.birthDate!,
               dunnQuadrant: d.dunnQuadrant,
             ),
           ),
@@ -163,19 +159,59 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
     final tutorCount = child.tutorUids.length;
     final name = profile.displayName;
 
+    void invite() => showInviteSheet(
+      context,
+      childName: name,
+      createInvite: () => repo.createInvite(child.id),
+    );
+
     return Scaffold(
-      appBar: AppBar(title: Text(name)),
+      appBar: AppBar(
+        title: Text(name),
+        actions: [
+          PopupMenuButton<VoidCallback>(
+            tooltip: 'Más opciones',
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (action) => action(),
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: isOwner
+                    ? () => _delete(name, tutorCount)
+                    : () => _leave(name),
+                child: Row(
+                  children: [
+                    Icon(
+                      isOwner
+                          ? Icons.delete_outline_rounded
+                          : Icons.link_off_rounded,
+                      color: theme.colorScheme.error,
+                      size: 20,
+                    ),
+                    const SizedBox(width: KuuSpacing.sm),
+                    Text(
+                      isOwner ? 'Eliminar a $name' : 'Desvincularme',
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
       body: StreamBuilder<List<RecordingSession>>(
         stream: _sessions,
         builder: (context, sessionSnap) {
           final sessions = sessionSnap.data ?? const <RecordingSession>[];
-          final monthAgo = DateTime.now()
-              .subtract(const Duration(days: 30))
-              .millisecondsSinceEpoch;
-          final month = sessions
-              .where((s) => s.startedAtMs >= monthAgo)
-              .toList();
-          final crises = month
+          // Same window as the bars: today and the 13 days before.
+          final now = DateTime.now();
+          final since = DateTime(
+            now.year,
+            now.month,
+            now.day - (_activityDays - 1),
+          ).millisecondsSinceEpoch;
+          final recent = sessions.where((s) => s.startedAtMs >= since).toList();
+          final crises = recent
               .where((s) => SessionOutcome.of(s) == SessionOutcome.crisis)
               .length;
           final shown = _showAll
@@ -208,7 +244,7 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
                       ),
                       const SizedBox(height: KuuSpacing.xs),
                       Text(
-                        '${child.approximateAge()} años aprox. · Código ${child.code}',
+                        '${kuuAgeLabel(child, profile)} · Código ${child.code}',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
@@ -241,12 +277,45 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
                         label: const Text('Conectar EmotiBit y grabar'),
                         onPressed: () => _record(name),
                       ),
+                      const SizedBox(height: KuuSpacing.lg),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _QuickAction(
+                              icon: Icons.person_add_alt_1_rounded,
+                              label: 'Invitar',
+                              onTap: invite,
+                            ),
+                          ),
+                          Expanded(
+                            child: _QuickAction(
+                              icon: Icons.edit_rounded,
+                              label: 'Editar',
+                              onTap: () => _edit(child, profile),
+                            ),
+                          ),
+                          Expanded(
+                            child: _QuickAction(
+                              icon: Icons.groups_rounded,
+                              label: 'Tutores',
+                              badge: tutorCount > 1 ? '$tutorCount' : null,
+                              onTap: () => showTutorsSheet(
+                                context,
+                                repo: repo,
+                                child: child,
+                                childName: name,
+                                onInvite: invite,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: KuuSpacing.md),
-              // Last 30 days
+              // Last 14 days
               KuuSurface(
                 child: Padding(
                   padding: const EdgeInsets.all(KuuSpacing.md),
@@ -254,13 +323,17 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        'Últimos 14 días',
+                        'Últimos $_activityDays días',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: KuuSpacing.md),
-                      KuuActivityBars(sessions: sessions, height: 40),
+                      KuuActivityBars(
+                        sessions: sessions,
+                        days: _activityDays,
+                        height: 40,
+                      ),
                       const SizedBox(height: KuuSpacing.sm),
                       const KuuOutcomeLegend(),
                       const SizedBox(height: KuuSpacing.md),
@@ -268,22 +341,22 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
                         children: [
                           Expanded(
                             child: KuuFigure(
-                              value: '${month.length}',
-                              label: 'Sesiones (30 d)',
+                              value: '${recent.length}',
+                              label: 'Sesiones',
                             ),
                           ),
                           Expanded(
                             child: KuuFigure(
                               value: '$crises',
-                              label: 'Crisis (30 d)',
+                              label: 'Crisis',
                               highlight: crises > 0,
                             ),
                           ),
                           Expanded(
                             child: KuuFigure(
                               value:
-                                  '${month.fold<int>(0, (n, s) => n + s.events.length)}',
-                              label: 'Eventos (30 d)',
+                                  '${recent.fold<int>(0, (n, s) => n + s.events.length)}',
+                              label: 'Eventos',
                             ),
                           ),
                         ],
@@ -343,11 +416,12 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
                         compact: true,
                         trailingStatus: switch (s.status) {
                           SessionStatus.uploaded => null,
-                          SessionStatus.recording when s.endedAtMs == null => KuuPill(
-                            icon: Icons.fiber_manual_record,
-                            text: 'Grabando',
-                            color: theme.colorScheme.error,
-                          ),
+                          SessionStatus.recording when s.endedAtMs == null =>
+                            KuuPill(
+                              icon: Icons.fiber_manual_record,
+                              text: 'Grabando',
+                              color: theme.colorScheme.error,
+                            ),
                           _ => KuuPill(
                             icon: Icons.cloud_upload_outlined,
                             text: 'Pendiente de subir',
@@ -376,41 +450,6 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
                   ),
                 ),
               const SizedBox(height: KuuSpacing.lg),
-              // Other actions
-              OutlinedButton.icon(
-                icon: const Icon(Icons.person_add_alt_1_rounded),
-                label: const Text('Invitar a otro tutor'),
-                onPressed: () => showInviteSheet(
-                  context,
-                  childName: name,
-                  createInvite: () => repo.createInvite(child.id),
-                ),
-              ),
-              const SizedBox(height: KuuSpacing.sm),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.edit_rounded),
-                label: const Text('Editar datos'),
-                onPressed: () => _edit(child, profile),
-              ),
-              const SizedBox(height: KuuSpacing.lg),
-              if (isOwner)
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                    foregroundColor: theme.colorScheme.error,
-                  ),
-                  icon: const Icon(Icons.delete_outline_rounded),
-                  label: Text('Eliminar a $name'),
-                  onPressed: () => _delete(name, tutorCount),
-                )
-              else
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                    foregroundColor: theme.colorScheme.error,
-                  ),
-                  icon: const Icon(Icons.link_off_rounded),
-                  label: const Text('Desvincularme'),
-                  onPressed: () => _leave(name),
-                ),
             ],
           );
         },
@@ -418,6 +457,70 @@ class _ChildDetailScreenState extends State<ChildDetailScreen> {
     );
   }
 }
+
+/// Round tonal shortcut under the header's main action.
+class _QuickAction extends StatelessWidget {
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.badge,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  /// Small count on the icon (e.g. number of tutors).
+  final String? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Semantics(
+      button: true,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(KuuRadius.md),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: KuuSpacing.xs),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Badge(
+                isLabelVisible: badge != null,
+                label: badge == null ? null : Text(badge!),
+                backgroundColor: scheme.primary,
+                offset: const Offset(2, -2),
+                child: Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: scheme.primary.withValues(alpha: 0.09),
+                  ),
+                  child: Icon(icon, color: scheme.primary, size: 24),
+                ),
+              ),
+              const SizedBox(height: KuuSpacing.xs + 2),
+              Text(
+                label,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: scheme.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Days covered by the activity card (bars and figures).
+const _activityDays = 14;
 
 String _capitalize(String s) =>
     s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);

@@ -45,38 +45,38 @@ class PendingSession {
   bool get isEnded => endedAtMs != null;
 
   Map<String, Object?> toJson() => {
-        'sessionId': sessionId,
-        'childId': childId,
-        'uid': uid,
-        'startedAtMs': startedAtMs,
-        'endedAtMs': endedAtMs,
-        'endReason': endReason?.name,
-        'packetCount': packetCount,
-        'streams': streams,
-        'stats': stats,
-        'gaps': [for (final g in gaps) g.toMap()],
-        'events': [for (final e in events) e.toMap()],
-      };
+    'sessionId': sessionId,
+    'childId': childId,
+    'uid': uid,
+    'startedAtMs': startedAtMs,
+    'endedAtMs': endedAtMs,
+    'endReason': endReason?.name,
+    'packetCount': packetCount,
+    'streams': streams,
+    'stats': stats,
+    'gaps': [for (final g in gaps) g.toMap()],
+    'events': [for (final e in events) e.toMap()],
+  };
 
   factory PendingSession.fromJson(Map<String, dynamic> m) => PendingSession(
-        sessionId: m['sessionId'] as String,
-        childId: m['childId'] as String,
-        uid: m['uid'] as String,
-        startedAtMs: (m['startedAtMs'] as num).toInt(),
-        endedAtMs: (m['endedAtMs'] as num?)?.toInt(),
-        endReason: SessionEndReason.values.asNameMap()[m['endReason']],
-        packetCount: (m['packetCount'] as num?)?.toInt() ?? 0,
-        streams: List<String>.from(m['streams'] as List? ?? const []),
-        stats: (m['stats'] as Map?)?.cast<String, Object?>(),
-        gaps: [
-          for (final g in (m['gaps'] as List? ?? const []))
-            SessionGap.fromMap(Map<String, dynamic>.from(g as Map)),
-        ],
-        events: [
-          for (final e in (m['events'] as List? ?? const []))
-            SessionEvent.fromMap(Map<String, dynamic>.from(e as Map)),
-        ],
-      );
+    sessionId: m['sessionId'] as String,
+    childId: m['childId'] as String,
+    uid: m['uid'] as String,
+    startedAtMs: (m['startedAtMs'] as num).toInt(),
+    endedAtMs: (m['endedAtMs'] as num?)?.toInt(),
+    endReason: SessionEndReason.values.asNameMap()[m['endReason']],
+    packetCount: (m['packetCount'] as num?)?.toInt() ?? 0,
+    streams: List<String>.from(m['streams'] as List? ?? const []),
+    stats: (m['stats'] as Map?)?.cast<String, Object?>(),
+    gaps: [
+      for (final g in (m['gaps'] as List? ?? const []))
+        SessionGap.fromMap(Map<String, dynamic>.from(g as Map)),
+    ],
+    events: [
+      for (final e in (m['events'] as List? ?? const []))
+        SessionEvent.fromMap(Map<String, dynamic>.from(e as Map)),
+    ],
+  );
 
   static Future<PendingSession?> read(Directory dir) async {
     final f = File('${dir.path}/$fileName');
@@ -124,7 +124,8 @@ class SessionUploadQueue extends ChangeNotifier {
   /// Sessions on this phone not yet uploaded (after the last run).
   int pendingCount = 0;
 
-  UploadState stateOf(String sessionId) => _states[sessionId] ?? UploadState.idle;
+  UploadState stateOf(String sessionId) =>
+      _states[sessionId] ?? UploadState.idle;
   String? errorOf(String sessionId) => _errors[sessionId];
 
   static Future<Directory> rootDir() async {
@@ -239,7 +240,9 @@ class SessionUploadQueue extends ChangeNotifier {
       _states[id] = UploadState.failed;
       _errors[id] = '$e';
       await repo
-          .updateSession(meta.childId, id, {'status': SessionStatus.failed.name})
+          .updateSession(meta.childId, id, {
+            'status': SessionStatus.failed.name,
+          })
           .catchError((_) {});
       return false;
     }

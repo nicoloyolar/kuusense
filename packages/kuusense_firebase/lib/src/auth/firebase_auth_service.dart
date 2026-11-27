@@ -4,7 +4,8 @@ import 'auth_service.dart';
 
 /// [AuthService] backed by Firebase Auth (email and password).
 class FirebaseAuthService implements AuthService {
-  FirebaseAuthService({FirebaseAuth? auth}) : _auth = auth ?? FirebaseAuth.instance;
+  FirebaseAuthService({FirebaseAuth? auth})
+      : _auth = auth ?? FirebaseAuth.instance;
 
   final FirebaseAuth _auth;
 
@@ -12,11 +13,16 @@ class FirebaseAuthService implements AuthService {
   String? get currentUserId => _auth.currentUser?.uid;
 
   @override
-  Stream<String?> get userChanges => _auth.authStateChanges().map((u) => u?.uid);
+  String? get currentEmail => _auth.currentUser?.email;
+
+  @override
+  Stream<String?> get userChanges =>
+      _auth.authStateChanges().map((u) => u?.uid);
 
   @override
   Future<void> signIn({required String email, required String password}) =>
-      _guard(() => _auth.signInWithEmailAndPassword(email: email, password: password));
+      _guard(() =>
+          _auth.signInWithEmailAndPassword(email: email, password: password));
 
   @override
   Future<void> sendPasswordReset({required String email}) => _guard(() async {

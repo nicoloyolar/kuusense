@@ -10,13 +10,13 @@ Future<void> showInviteSheet(
   BuildContext context, {
   required String childName,
   required Future<Invite> Function() createInvite,
-}) =>
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _InviteSheet(childName: childName, createInvite: createInvite),
-    );
+}) => showModalBottomSheet<void>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: true,
+  builder: (_) =>
+      _InviteSheet(childName: childName, createInvite: createInvite),
+);
 
 class _InviteSheet extends StatefulWidget {
   const _InviteSheet({required this.childName, required this.createInvite});
@@ -41,17 +41,27 @@ class _InviteSheetState extends State<_InviteSheet> {
     final theme = Theme.of(context);
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(KuuSpacing.lg, 0, KuuSpacing.lg, KuuSpacing.lg),
+        padding: const EdgeInsets.fromLTRB(
+          KuuSpacing.lg,
+          0,
+          KuuSpacing.lg,
+          KuuSpacing.lg,
+        ),
         child: FutureBuilder<Invite>(
           future: _invite,
           builder: (context, snap) {
             if (snap.hasError) {
-              return Text(genericErrorMessage, style: TextStyle(color: theme.colorScheme.error));
+              return Text(
+                genericErrorMessage,
+                style: TextStyle(color: theme.colorScheme.error),
+              );
             }
             final invite = snap.data;
             if (invite == null) {
-              return const Padding(
-                padding: EdgeInsets.all(KuuSpacing.xl),
+              // Fixed height: a bare Center would stretch the sheet to the
+              // whole screen while the code is being created.
+              return const SizedBox(
+                height: 220,
                 child: Center(child: CircularProgressIndicator()),
               );
             }
@@ -88,7 +98,9 @@ class _InviteSheetState extends State<_InviteSheet> {
                   onPressed: () async {
                     final messenger = ScaffoldMessenger.of(context);
                     await Clipboard.setData(ClipboardData(text: invite.code));
-                    messenger.showSnackBar(const SnackBar(content: Text('Código copiado')));
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Código copiado')),
+                    );
                   },
                 ),
               ],

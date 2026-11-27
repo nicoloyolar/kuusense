@@ -179,10 +179,12 @@ class RecordingController extends ChangeNotifier {
     _gapStart = null;
     _recorder?.mark('gap_end');
     if (_gaps.length < SessionGap.maxPerSession) {
-      _gaps.add(SessionGap(
-        fromMs: start.millisecondsSinceEpoch,
-        toMs: DateTime.now().millisecondsSinceEpoch,
-      ));
+      _gaps.add(
+        SessionGap(
+          fromMs: start.millisecondsSinceEpoch,
+          toMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
     }
     _saveMeta();
   }
@@ -227,10 +229,13 @@ class RecordingController extends ChangeNotifier {
   /// Upload state of the last recorded session.
   UploadState get uploadState {
     final s = session;
-    return (s == null || isRecording) ? UploadState.idle : uploads.stateOf(s.id);
+    return (s == null || isRecording)
+        ? UploadState.idle
+        : uploads.stateOf(s.id);
   }
 
-  String? get uploadError => session == null ? null : uploads.errorOf(session!.id);
+  String? get uploadError =>
+      session == null ? null : uploads.errorOf(session!.id);
 
   /// Behaviors and notes marked during the current session, in order.
   final List<SessionEvent> events = [];

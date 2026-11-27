@@ -46,7 +46,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
     try {
       await widget.controller.connect(d);
     } catch (e) {
-      _error = 'No pudimos conectar con ${d.deviceId}. Revisa que siga encendido y vuelve a intentarlo.';
+      _error =
+          'No pudimos conectar con ${d.deviceId}. Revisa que siga encendido y vuelve a intentarlo.';
     }
     _scanner.resume();
     if (mounted) setState(() => _connectingId = null);
@@ -74,12 +75,21 @@ class _ConnectScreenState extends State<ConnectScreen> {
           final devices = _scanner.devices;
           final slow = devices.isEmpty && _scanner.elapsed > _slowAfter;
           return ListView(
-            padding: const EdgeInsets.fromLTRB(KuuSpacing.lg, KuuSpacing.sm, KuuSpacing.lg, KuuSpacing.xl),
+            padding: const EdgeInsets.fromLTRB(
+              KuuSpacing.lg,
+              KuuSpacing.sm,
+              KuuSpacing.lg,
+              KuuSpacing.xl,
+            ),
             children: [
               if (c.childLabel != null)
                 Center(
                   child: Chip(
-                    avatar: const Icon(Icons.fiber_manual_record_rounded, size: 14, color: KuuColor.statePreCrisis),
+                    avatar: const Icon(
+                      Icons.fiber_manual_record_rounded,
+                      size: 14,
+                      color: KuuColor.statePreCrisis,
+                    ),
                     label: Text('Sesión para ${c.childLabel}'),
                     visualDensity: VisualDensity.compact,
                   ),
@@ -91,10 +101,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
                 devices.isEmpty
                     ? 'Buscando EmotiBits cerca…'
                     : devices.length == 1
-                        ? 'Encontramos 1 EmotiBit'
-                        : 'Encontramos ${devices.length} EmotiBits',
+                    ? 'Encontramos 1 EmotiBit'
+                    : 'Encontramos ${devices.length} EmotiBits',
                 textAlign: TextAlign.center,
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: KuuSpacing.xs),
               Text(
@@ -102,15 +114,25 @@ class _ConnectScreenState extends State<ConnectScreen> {
                     ? 'Enciende el EmotiBit y conecta este teléfono a su misma red WiFi.'
                     : 'Toca el que tienes contigo para conectarlo. La búsqueda sigue activa.',
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
               if (c.deviceLostMessage != null) ...[
                 const SizedBox(height: KuuSpacing.md),
-                _Notice(icon: Icons.link_off_rounded, color: KuuColor.stateAlert, text: c.deviceLostMessage!),
+                _Notice(
+                  icon: Icons.link_off_rounded,
+                  color: KuuColor.stateAlert,
+                  text: c.deviceLostMessage!,
+                ),
               ],
               if (_error != null) ...[
                 const SizedBox(height: KuuSpacing.md),
-                _Notice(icon: Icons.error_outline_rounded, color: KuuColor.feedbackError, text: _error!),
+                _Notice(
+                  icon: Icons.error_outline_rounded,
+                  color: KuuColor.feedbackError,
+                  text: _error!,
+                ),
               ],
               const SizedBox(height: KuuSpacing.lg),
               for (final d in devices)
@@ -131,7 +153,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
                 _Notice(
                   icon: Icons.tips_and_updates_outlined,
                   color: KuuColor.feedbackInfo,
-                  text: 'Está tardando más de lo normal. Revisa que el EmotiBit tenga la luz encendida '
+                  text:
+                      'Está tardando más de lo normal. Revisa que el EmotiBit tenga la luz encendida '
                       'y que ambos estén en la misma red WiFi de 2,4 GHz.',
                 ),
                 const SizedBox(height: KuuSpacing.sm),
@@ -164,7 +187,10 @@ class _Radar extends StatefulWidget {
 }
 
 class _RadarState extends State<_Radar> with SingleTickerProviderStateMixin {
-  late final _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))..repeat();
+  late final _anim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  )..repeat();
 
   @override
   void dispose() {
@@ -174,7 +200,9 @@ class _RadarState extends State<_Radar> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.found > 0 ? KuuColor.brandSecondary : KuuColor.brandHighlight;
+    final color = widget.found > 0
+        ? KuuColor.brandSecondary
+        : KuuColor.brandHighlight;
     return SizedBox(
       height: 190,
       child: AnimatedBuilder(
@@ -193,10 +221,18 @@ class _RadarState extends State<_Radar> with SingleTickerProviderStateMixin {
                   end: Alignment.bottomRight,
                   colors: [color, KuuColor.brandPrimary],
                 ),
-                boxShadow: [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 24, spreadRadius: 2)],
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.35),
+                    blurRadius: 24,
+                    spreadRadius: 2,
+                  ),
+                ],
               ),
               child: Icon(
-                widget.found > 0 ? Icons.sensors_rounded : Icons.wifi_tethering_rounded,
+                widget.found > 0
+                    ? Icons.sensors_rounded
+                    : Icons.wifi_tethering_rounded,
                 color: KuuColor.lightSurface,
                 size: 40,
               ),
@@ -226,12 +262,17 @@ class _RadarPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2;
       canvas.drawCircle(center, r, paint);
-      canvas.drawCircle(center, r, Paint()..color = color.withValues(alpha: (1 - t) * 0.06));
+      canvas.drawCircle(
+        center,
+        r,
+        Paint()..color = color.withValues(alpha: (1 - t) * 0.06),
+      );
     }
   }
 
   @override
-  bool shouldRepaint(_RadarPainter old) => old.progress != progress || old.color != color;
+  bool shouldRepaint(_RadarPainter old) =>
+      old.progress != progress || old.color != color;
 }
 
 // ------------------------------------------------------------------ device card
@@ -266,7 +307,9 @@ class _DeviceCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(KuuRadius.lg),
             border: Border.all(
-              color: connecting ? KuuColor.brandSecondary : theme.colorScheme.outline,
+              color: connecting
+                  ? KuuColor.brandSecondary
+                  : theme.colorScheme.outline,
               width: connecting ? 2 : 1,
             ),
           ),
@@ -285,7 +328,11 @@ class _DeviceCard extends StatelessWidget {
                       colors: [KuuColor.brandHighlight, KuuColor.brandPrimary],
                     ),
                   ),
-                  child: const Icon(Icons.watch_rounded, color: KuuColor.lightSurface, size: 28),
+                  child: const Icon(
+                    Icons.watch_rounded,
+                    color: KuuColor.lightSurface,
+                    size: 28,
+                  ),
                 ),
               ),
               const SizedBox(width: KuuSpacing.md),
@@ -295,12 +342,17 @@ class _DeviceCard extends StatelessWidget {
                   children: [
                     Text(
                       device.deviceId,
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, letterSpacing: 0.3),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.3,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'EmotiBit · ${device.address.address}',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: KuuSpacing.xs),
                     Wrap(
@@ -308,12 +360,22 @@ class _DeviceCard extends StatelessWidget {
                       runSpacing: KuuSpacing.xs,
                       children: [
                         if (connecting)
-                          const _StatusChip('Conectando…', KuuColor.brandSecondary)
+                          const _StatusChip(
+                            'Conectando…',
+                            KuuColor.brandSecondary,
+                          )
                         else if (available)
                           const _StatusChip('Disponible', KuuColor.stateStable)
                         else
-                          const _StatusChip('En uso por otro teléfono', KuuColor.stateAlert),
-                        if (lastUsed) const _StatusChip('Último usado', KuuColor.brandHighlight),
+                          const _StatusChip(
+                            'En uso por otro teléfono',
+                            KuuColor.stateAlert,
+                          ),
+                        if (lastUsed)
+                          const _StatusChip(
+                            'Último usado',
+                            KuuColor.brandHighlight,
+                          ),
                       ],
                     ),
                   ],
@@ -321,9 +383,15 @@ class _DeviceCard extends StatelessWidget {
               ),
               const SizedBox(width: KuuSpacing.sm),
               if (connecting)
-                const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2.5))
+                const SizedBox.square(
+                  dimension: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                )
               else if (available)
-                Icon(Icons.chevron_right_rounded, color: theme.colorScheme.onSurfaceVariant),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
             ],
           ),
         ),
@@ -339,23 +407,29 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: KuuSpacing.sm, vertical: 3),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(KuuRadius.pill),
+    padding: const EdgeInsets.symmetric(horizontal: KuuSpacing.sm, vertical: 3),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.14),
+      borderRadius: BorderRadius.circular(KuuRadius.pill),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-            const SizedBox(width: 6),
-            Text(
-              text,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ],
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: Theme.of(
+            context,
+          ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 /// Fades and slides a device card in when it first appears.
@@ -365,15 +439,15 @@ class _AppearIn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0, end: 1),
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeOutCubic,
-        builder: (context, t, child) => Opacity(
-          opacity: t,
-          child: Transform.translate(offset: Offset(0, 16 * (1 - t)), child: child),
-        ),
-        child: child,
-      );
+    tween: Tween(begin: 0, end: 1),
+    duration: const Duration(milliseconds: 350),
+    curve: Curves.easeOutCubic,
+    builder: (context, t, child) => Opacity(
+      opacity: t,
+      child: Transform.translate(offset: Offset(0, 16 * (1 - t)), child: child),
+    ),
+    child: child,
+  );
 }
 
 class _Notice extends StatelessWidget {
@@ -384,20 +458,22 @@ class _Notice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(KuuSpacing.md),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(KuuRadius.md),
+    padding: const EdgeInsets.all(KuuSpacing.md),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(KuuRadius.md),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: color),
+        const SizedBox(width: KuuSpacing.sm),
+        Expanded(
+          child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color),
-            const SizedBox(width: KuuSpacing.sm),
-            Expanded(child: Text(text, style: Theme.of(context).textTheme.bodyMedium)),
-          ],
-        ),
-      );
+      ],
+    ),
+  );
 }
 
 // ------------------------------------------------------------------ help
@@ -435,10 +511,22 @@ class _HelpSheetState extends State<_HelpSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     const tips = [
-      (Icons.power_settings_new_rounded, 'El EmotiBit está encendido y con batería (luz encendida).'),
-      (Icons.wifi_rounded, 'El teléfono y el EmotiBit están en la misma red WiFi.'),
-      (Icons.network_check_rounded, 'La red es de 2,4 GHz. En un hotspot de iPhone, activa "Maximizar compatibilidad".'),
-      (Icons.phonelink_off_rounded, 'Ningún otro teléfono o computador está conectado a ese EmotiBit.'),
+      (
+        Icons.power_settings_new_rounded,
+        'El EmotiBit está encendido y con batería (luz encendida).',
+      ),
+      (
+        Icons.wifi_rounded,
+        'El teléfono y el EmotiBit están en la misma red WiFi.',
+      ),
+      (
+        Icons.network_check_rounded,
+        'La red es de 2,4 GHz. En un hotspot de iPhone, activa "Maximizar compatibilidad".',
+      ),
+      (
+        Icons.phonelink_off_rounded,
+        'Ningún otro teléfono o computador está conectado a ese EmotiBit.',
+      ),
     ];
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -451,7 +539,12 @@ class _HelpSheetState extends State<_HelpSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('¿No aparece tu EmotiBit?', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+          Text(
+            '¿No aparece tu EmotiBit?',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           const SizedBox(height: KuuSpacing.md),
           for (final (icon, text) in tips)
             Padding(
@@ -471,7 +564,9 @@ class _HelpSheetState extends State<_HelpSheet> {
           Text(
             'Si conoces la IP del EmotiBit (en un hotspot aparece en la lista de dispositivos conectados), '
             'la buscaremos directamente.',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: KuuSpacing.sm),
           TextField(
@@ -485,7 +580,10 @@ class _HelpSheetState extends State<_HelpSheet> {
             onSubmitted: (_) => _submit(),
           ),
           const SizedBox(height: KuuSpacing.md),
-          FilledButton(onPressed: _submit, child: const Text('Buscar en esta IP')),
+          FilledButton(
+            onPressed: _submit,
+            child: const Text('Buscar en esta IP'),
+          ),
         ],
       ),
     );

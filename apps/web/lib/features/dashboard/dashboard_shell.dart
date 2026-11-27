@@ -3,29 +3,37 @@ import 'package:kuusense_firebase/kuusense_firebase.dart';
 import 'package:kuusense_ui/kuusense_ui.dart';
 
 import '../admin/children_admin_page.dart';
+import '../admin/researchers_page.dart';
 import '../admin/tutors_page.dart';
 import '../common/page_title.dart';
-
-import 'children_page.dart';
+import 'home_page.dart';
+import 'session_detail_page.dart';
 import 'sessions_page.dart';
 
-/// Sections of the platform. The last two are admin-only maintainers.
+/// Sections of the platform. The admin group is visible to admins only.
 enum _Section {
-  home('Inicio', Icons.space_dashboard_outlined),
-  sessions('Sesiones', Icons.monitor_heart_outlined),
-  tutors('Tutores', Icons.group_outlined),
-  children('NNA', Icons.child_care_rounded);
+  home('Inicio', Icons.space_dashboard_outlined, Icons.space_dashboard_rounded),
+  sessions(
+    'Sesiones',
+    Icons.monitor_heart_outlined,
+    Icons.monitor_heart_rounded,
+  ),
+  tutors('Tutores', Icons.group_outlined, Icons.group_rounded),
+  children('NNA', Icons.child_care_outlined, Icons.child_care_rounded),
+  researchers('Investigadores', Icons.science_outlined, Icons.science_rounded);
 
-  const _Section(this.label, this.icon);
+  const _Section(this.label, this.icon, this.selectedIcon);
   final String label;
   final IconData icon;
+  final IconData selectedIcon;
 
-  bool get adminOnly => this == tutors || this == children;
+  bool get adminOnly =>
+      this == tutors || this == children || this == researchers;
 }
 
-/// Signed-in staff layout: header, section navigation (rail on wide screens,
-/// bottom bar on narrow ones) and the sections. Holds the live data streams
-/// so every section shares them.
+/// Signed-in staff layout: a fixed navy sidebar (a drawer on narrow
+/// screens) and the current section at full width. Holds the live data
+/// streams so every section shares them.
 class DashboardShell extends StatefulWidget {
   const DashboardShell({
     super.key,
@@ -54,19 +62,29 @@ class _DashboardShellState extends State<DashboardShell> {
       : Stream.value(const <String, ChildProfile>{});
 
   bool get _isAdmin => widget.staff.isAdmin;
-  late final List<_Section> _sections = [
-    for (final s in _Section.values)
-      if (_isAdmin || !s.adminOnly) s,
-  ];
 
   _Section _section = _Section.home;
 
   /// NNA the sessions section is filtered to (null = all).
   String? _childFilter;
 
+  /// Session open in the detail view (null = the section itself).
+  RecordingSession? _openSession;
+
+  void _go(_Section s) => setState(() {
+    _section = s;
+    _openSession = null;
+  });
+
   void _openChildSessions(String childId) => setState(() {
     _childFilter = childId;
     _section = _Section.sessions;
+    _openSession = null;
+  });
+
+  void _open(RecordingSession s) => setState(() {
+    _section = _Section.sessions;
+    _openSession = s;
   });
 
   @override
@@ -97,6 +115,7 @@ class _DashboardShellState extends State<DashboardShell> {
                   final tutors = tutorSnap.data ?? const <Tutor>[];
                   final profiles =
                       profileSnap.data ?? const <String, ChildProfile>{};
+                  final codes = {for (final c in children) c.id: c.code};
 
                   final Widget body;
                   if (error != null) {
@@ -106,19 +125,33 @@ class _DashboardShellState extends State<DashboardShell> {
                     );
                   } else if (loading) {
                     body = const Center(child: CircularProgressIndicator());
+                  } else if (_openSession != null) {
+                    final s = _openSession!;
+                    body = SessionDetailView(
+                      key: ValueKey('${s.childId}/${s.id}'),
+                      repo: widget.repo,
+                      childId: s.childId,
+                      sessionId: s.id,
+                      childCode: codes[s.childId] ?? '—',
+                      onBack: () => setState(() => _openSession = null),
+                    );
                   } else {
                     body = switch (_section) {
-                      _Section.home => ChildrenPage(
+                      _Section.home => HomePage(
                         children: children,
                         sessions: sessions,
-                        onOpen: _openChildSessions,
+                        profiles: profiles,
+                        onOpenSession: _open,
+                        onOpenChild: _openChildSessions,
+                        onAllSessions: () => _go(_Section.sessions),
                       ),
                       _Section.sessions => SessionsPage(
-                        repo: widget.repo,
                         children: children,
                         sessions: sessions,
+                        profiles: profiles,
                         childFilter: _childFilter,
                         onFilter: (id) => setState(() => _childFilter = id),
+                        onOpenSession: _open,
                       ),
                       _Section.tutors => TutorsPage(
                         repo: widget.repo,
@@ -132,16 +165,20 @@ class _DashboardShellState extends State<DashboardShell> {
                         tutors: tutors,
                         sessions: sessions,
                       ),
+                      _Section.researchers => ResearchersPage(
+                        repo: widget.repo,
+                      ),
                     };
                   }
                   return PageTitle(
-                    _section.label,
+                    _openSession != null ? 'Sesión' : _section.label,
                     child: _Frame(
                       staff: widget.staff,
+                      email: widget.auth.currentEmail,
+                      isAdmin: _isAdmin,
+                      section: _section,
+                      onSection: _go,
                       onSignOut: widget.auth.signOut,
-                      sections: _sections,
-                      section: _sections.indexOf(_section),
-                      onSection: (i) => setState(() => _section = _sections[i]),
                       child: body,
                     ),
                   );
@@ -153,86 +190,291 @@ class _DashboardShellState extends State<DashboardShell> {
   }
 }
 
+// ------------------------------------------------------------------ frame
+
 class _Frame extends StatelessWidget {
   const _Frame({
     required this.staff,
-    required this.onSignOut,
-    required this.sections,
+    required this.email,
+    required this.isAdmin,
     required this.section,
     required this.onSection,
+    required this.onSignOut,
     required this.child,
   });
 
   final StaffMember staff;
+  final String? email;
+  final bool isAdmin;
+  final _Section section;
+  final ValueChanged<_Section> onSection;
   final VoidCallback onSignOut;
-  final List<_Section> sections;
-  final int section;
-  final ValueChanged<int> onSection;
   final Widget child;
+
+  static const sidebarWidth = 248.0;
+  static const _navy = KuuColor.lightOnSurface;
 
   @override
   Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= 1000;
     final theme = Theme.of(context);
-    final wide = MediaQuery.sizeOf(context).width >= 760;
-    final appBar = AppBar(
-      toolbarHeight: 64,
-      titleSpacing: KuuSpacing.md,
-      title: const KuusenseLogo(height: 34, horizontal: true),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: KuuSpacing.sm),
-          child: Chip(
-            avatar: const Icon(Icons.verified_user_outlined, size: 18),
-            label: Text(staff.role.label),
-            visualDensity: VisualDensity.compact,
-          ),
-        ),
-        IconButton(
-          tooltip: 'Cerrar sesión',
-          onPressed: onSignOut,
-          icon: const Icon(Icons.logout_rounded),
-        ),
-        const SizedBox(width: KuuSpacing.sm),
-      ],
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(1),
-        child: Divider(height: 1, color: theme.colorScheme.outline),
-      ),
+    Widget sidebar({VoidCallback? afterTap}) => _Sidebar(
+      staff: staff,
+      email: email,
+      isAdmin: isAdmin,
+      section: section,
+      onSection: (s) {
+        afterTap?.call();
+        onSection(s);
+      },
+      onSignOut: onSignOut,
     );
 
-    if (!wide) {
+    if (wide) {
       return Scaffold(
-        appBar: appBar,
-        body: child,
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: section,
-          onDestinationSelected: onSection,
-          destinations: [
-            for (final d in sections)
-              NavigationDestination(icon: Icon(d.icon), label: d.label),
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(width: sidebarWidth, child: sidebar()),
+            Expanded(
+              child: Align(alignment: Alignment.topCenter, child: child),
+            ),
           ],
         ),
       );
     }
-    return Scaffold(
-      appBar: appBar,
-      body: Row(
-        children: [
-          NavigationRail(
-            selectedIndex: section,
-            onDestinationSelected: onSection,
-            labelType: NavigationRailLabelType.all,
-            destinations: [
-              for (final d in sections)
-                NavigationRailDestination(
-                  icon: Icon(d.icon),
-                  label: Text(d.label),
+    return Builder(
+      builder: (context) => Scaffold(
+        appBar: AppBar(
+          backgroundColor: _navy,
+          foregroundColor: KuuColor.lightSurface,
+          title: const KuusenseLogoOnBrand(height: 28, horizontal: true),
+          centerTitle: false,
+        ),
+        drawer: Drawer(
+          width: sidebarWidth,
+          backgroundColor: _navy,
+          shape: const RoundedRectangleBorder(),
+          child: Builder(
+            builder: (ctx) => sidebar(afterTap: () => Navigator.of(ctx).pop()),
+          ),
+        ),
+        body: child,
+      ),
+    );
+  }
+}
+
+class _Sidebar extends StatelessWidget {
+  const _Sidebar({
+    required this.staff,
+    required this.email,
+    required this.isAdmin,
+    required this.section,
+    required this.onSection,
+    required this.onSignOut,
+  });
+
+  final StaffMember staff;
+  final String? email;
+  final bool isAdmin;
+  final _Section section;
+  final ValueChanged<_Section> onSection;
+  final VoidCallback onSignOut;
+
+  static const _muted = Color(0x99FFFFFF);
+  static const _faint = Color(0x66FFFFFF);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    Widget group(String label) => Padding(
+      padding: const EdgeInsets.fromLTRB(
+        KuuSpacing.lg,
+        KuuSpacing.lg,
+        KuuSpacing.lg,
+        KuuSpacing.sm,
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: _faint,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+    return ColoredBox(
+      color: _Frame._navy,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(
+                KuuSpacing.lg,
+                KuuSpacing.lg,
+                KuuSpacing.lg,
+                KuuSpacing.sm,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: KuusenseLogoOnBrand(height: 34, horizontal: true),
+              ),
+            ),
+            group('GENERAL'),
+            for (final s in [_Section.home, _Section.sessions])
+              _NavItem(
+                section: s,
+                selected: section == s,
+                onTap: () => onSection(s),
+              ),
+            if (isAdmin) ...[
+              group('ADMINISTRACIÓN'),
+              for (final s in [
+                _Section.tutors,
+                _Section.children,
+                _Section.researchers,
+              ])
+                _NavItem(
+                  section: s,
+                  selected: section == s,
+                  onTap: () => onSection(s),
                 ),
             ],
+            const Spacer(),
+            Container(
+              margin: const EdgeInsets.all(KuuSpacing.md),
+              padding: const EdgeInsets.all(KuuSpacing.sm),
+              decoration: BoxDecoration(
+                color: KuuColor.lightSurface.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(KuuRadius.md),
+              ),
+              child: Row(
+                children: [
+                  KuuPersonAvatar(
+                    name: staff.displayName.isNotEmpty
+                        ? staff.displayName
+                        : email ?? staff.role.label,
+                    size: 36,
+                  ),
+                  const SizedBox(width: KuuSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          staff.displayName.isNotEmpty
+                              ? staff.displayName
+                              : email ?? 'Equipo KúuSense',
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: KuuColor.lightSurface,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          staff.role.label,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: _muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Cerrar sesión',
+                    onPressed: onSignOut,
+                    icon: const Icon(
+                      Icons.logout_rounded,
+                      color: _muted,
+                      size: 20,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatefulWidget {
+  const _NavItem({
+    required this.section,
+    required this.selected,
+    required this.onTap,
+  });
+  final _Section section;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_NavItem> createState() => _NavItemState();
+}
+
+class _NavItemState extends State<_NavItem> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = widget.selected;
+    final color = selected ? KuuColor.lightSurface : _Sidebar._muted;
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: KuuSpacing.md,
+        vertical: 2,
+      ),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            height: 42,
+            padding: const EdgeInsets.symmetric(horizontal: KuuSpacing.sm),
+            decoration: BoxDecoration(
+              color: selected
+                  ? KuuColor.brandHighlight.withValues(alpha: 0.28)
+                  : _hover
+                  ? KuuColor.lightSurface.withValues(alpha: 0.06)
+                  : null,
+              borderRadius: BorderRadius.circular(KuuRadius.sm),
+            ),
+            child: Row(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 3,
+                  height: selected ? 20 : 0,
+                  decoration: BoxDecoration(
+                    color: KuuColor.brandSecondary,
+                    borderRadius: BorderRadius.circular(KuuRadius.pill),
+                  ),
+                ),
+                const SizedBox(width: KuuSpacing.sm),
+                Icon(
+                  selected ? widget.section.selectedIcon : widget.section.icon,
+                  size: 20,
+                  color: color,
+                ),
+                const SizedBox(width: KuuSpacing.sm),
+                Text(
+                  widget.section.label,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: color,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
-          VerticalDivider(width: 1, color: theme.colorScheme.outline),
-          Expanded(child: child),
-        ],
+        ),
       ),
     );
   }

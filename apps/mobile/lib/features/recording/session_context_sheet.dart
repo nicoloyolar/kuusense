@@ -23,6 +23,13 @@ class _SessionContextSheetState extends State<_SessionContextSheet> {
   SessionPlace? _place;
   SessionActivity? _activity;
   final Set<TutorType> _present = {};
+  final _comment = TextEditingController();
+
+  @override
+  void dispose() {
+    _comment.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,13 +50,15 @@ class _SessionContextSheetState extends State<_SessionContextSheet> {
       ),
     );
 
+    // Lift the sheet above the keyboard so the comment box stays visible.
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
+        padding: EdgeInsets.fromLTRB(
           KuuSpacing.lg,
           0,
           KuuSpacing.lg,
-          KuuSpacing.lg,
+          KuuSpacing.lg + keyboard,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -87,7 +96,26 @@ class _SessionContextSheetState extends State<_SessionContextSheet> {
                       setState(() => on ? _present.add(t) : _present.remove(t)),
                 ),
             ]),
-            const SizedBox(height: KuuSpacing.lg),
+            Padding(
+              padding: const EdgeInsets.only(top: KuuSpacing.lg),
+              child: TextField(
+                controller: _comment,
+                minLines: 2,
+                maxLines: 4,
+                maxLength: SessionContext.commentMaxLength,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Comentarios',
+                  hintText:
+                      'Ej.: sensor en la muñeca izquierda, después del almuerzo.',
+                  helperText:
+                      'Opcional. No escribas nombres: lo ve el equipo de investigación.',
+                  helperMaxLines: 2,
+                  alignLabelWithHint: true,
+                ),
+              ),
+            ),
+            const SizedBox(height: KuuSpacing.md),
             FilledButton.icon(
               onPressed: () => Navigator.pop(
                 context,
@@ -95,6 +123,7 @@ class _SessionContextSheetState extends State<_SessionContextSheet> {
                   place: _place,
                   activity: _activity,
                   present: _present.toList(),
+                  comment: _comment.text.trim(),
                 ),
               ),
               icon: const Icon(Icons.fiber_manual_record),

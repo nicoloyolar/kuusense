@@ -39,8 +39,9 @@ class DeviceScanner extends ChangeNotifier {
   bool get isRunning => _running;
 
   /// How long the current search has been running (for "taking long" hints).
-  Duration get elapsed =>
-      _startedAt == null ? Duration.zero : DateTime.now().difference(_startedAt!);
+  Duration get elapsed => _startedAt == null
+      ? Duration.zero
+      : DateTime.now().difference(_startedAt!);
 
   /// Devices found, the last used one first, then by id.
   List<DiscoveredEmotiBit> get devices {
@@ -85,9 +86,10 @@ class DeviceScanner extends ChangeNotifier {
     while (_running && run == _run) {
       if (!_paused) {
         final targets = <InternetAddress>{
-          _broadcast,
           ?lastDevice?.address,
           ?_manualIp,
+          ...await _localSubnet(),
+          _broadcast,
         }.toList();
         try {
           final found = await EmotiBitHost.discover(targets: targets);
@@ -111,6 +113,44 @@ class DeviceScanner extends ChangeNotifier {
     stop();
     super.dispose();
   }
+
+  /// Every address of the phone's local networks, to ask each one directly.
+  /// iOS drops broadcasts from apps without Apple's multicast entitlement,
+  /// so this is how an iPhone finds the EmotiBit (also on its own hotspot,
+  /// 172.20.10.0/28). Other networks are swept as /24.
+  static Future<List<InternetAddress>> _localSubnet() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+      );
+      final out = <InternetAddress>[];
+      for (final i in interfaces) {
+        for (final a in i.addresses) {
+          final b = a.rawAddress;
+          final private =
+              b[0] == 10 ||
+              (b[0] == 172 && b[1] >= 16 && b[1] <= 31) ||
+              (b[0] == 192 && b[1] == 168);
+          if (!private) continue;
+          final hotspot = b[0] == 172 && b[1] == 20 && b[2] == 10;
+          final last = hotspot ? 14 : 254;
+          final first = hotspot ? (b[3] & 0xF0) + 1 : 1;
+          for (
+            var h = first;
+            h <= (hotspot ? (b[3] & 0xF0) + last : last);
+            h++
+          ) {
+            if (h == b[3]) continue;
+            out.add(InternetAddress('${b[0]}.${b[1]}.${b[2]}.$h'));
+          }
+        }
+      }
+      return out;
+    } catch (e) {
+      debugPrint('Local network list failed: $e');
+      return const [];
+    }
+  }
 }
 
 /// The EmotiBit last connected on this phone, kept in a small file so the
@@ -122,8 +162,9 @@ class LastEmotiBit {
 
   InternetAddress? get address => InternetAddress.tryParse(ip);
 
-  static Future<File> _file() async =>
-      File('${(await getApplicationSupportDirectory()).path}/last_emotibit.json');
+  static Future<File> _file() async => File(
+    '${(await getApplicationSupportDirectory()).path}/last_emotibit.json',
+  );
 
   static Future<LastEmotiBit?> load() async {
     try {
@@ -140,7 +181,9 @@ class LastEmotiBit {
     try {
       final f = await _file();
       await f.parent.create(recursive: true);
-      await f.writeAsString(jsonEncode({'deviceId': d.deviceId, 'ip': d.address.address}));
+      await f.writeAsString(
+        jsonEncode({'deviceId': d.deviceId, 'ip': d.address.address}),
+      );
     } catch (e) {
       debugPrint('Could not remember the EmotiBit: $e');
     }

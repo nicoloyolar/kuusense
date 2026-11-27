@@ -36,49 +36,83 @@ class ChildAvatar extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(color: a.color.withValues(alpha: 0.18), shape: BoxShape.circle),
+      decoration: BoxDecoration(
+        color: a.color.withValues(alpha: 0.18),
+        shape: BoxShape.circle,
+      ),
       child: Icon(a.icon, color: a.color, size: size * 0.55),
     );
   }
 }
 
-/// Grid to choose an avatar.
+/// Symmetric grid (always [columns] per row) to choose an avatar.
 class AvatarPicker extends StatelessWidget {
-  const AvatarPicker({super.key, required this.selectedId, required this.onChanged});
+  const AvatarPicker({
+    super.key,
+    required this.selectedId,
+    required this.onChanged,
+  });
   final String? selectedId;
   final ValueChanged<String> onChanged;
 
+  /// 8 avatars → two even rows of four.
+  static const columns = 4;
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: KuuSpacing.sm,
-      runSpacing: KuuSpacing.sm,
-      children: [
-        for (final a in KuuAvatar.all)
-          Semantics(
-            button: true,
-            selected: a.id == selectedId,
-            label: 'Avatar ${a.id}',
-            child: InkWell(
-              key: ValueKey('avatar-${a.id}'),
-              customBorder: const CircleBorder(),
-              onTap: () => onChanged(a.id),
-              child: Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    width: 3,
-                    color: a.id == selectedId ? scheme.primary : Colors.transparent,
-                  ),
+    final all = KuuAvatar.all;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Each cell gets an equal share of the width; the avatar fits inside
+        // it (selection ring included) without growing past 56 px.
+        final cell = constraints.maxWidth / columns;
+        final size = (cell - KuuSpacing.sm - 12).clamp(32.0, 56.0);
+        return Column(
+          children: [
+            for (var start = 0; start < all.length; start += columns)
+              Padding(
+                padding: EdgeInsets.only(top: start == 0 ? 0 : KuuSpacing.sm),
+                child: Row(
+                  children: [
+                    for (var i = start; i < start + columns; i++)
+                      Expanded(
+                        child: Center(
+                          child: i < all.length
+                              ? _option(context, all[i], size)
+                              : null,
+                        ),
+                      ),
+                  ],
                 ),
-                child: ChildAvatar(avatarId: a.id, size: 56),
               ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _option(BuildContext context, KuuAvatar a, double size) {
+    final scheme = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      selected: a.id == selectedId,
+      label: 'Avatar ${a.id}',
+      child: InkWell(
+        key: ValueKey('avatar-${a.id}'),
+        customBorder: const CircleBorder(),
+        onTap: () => onChanged(a.id),
+        child: Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              width: 3,
+              color: a.id == selectedId ? scheme.primary : Colors.transparent,
             ),
           ),
-      ],
+          child: ChildAvatar(avatarId: a.id, size: size),
+        ),
+      ),
     );
   }
 }

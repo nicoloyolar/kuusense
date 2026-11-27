@@ -39,12 +39,22 @@ Future<T?> showKuuDialog<T>(
     transitionDuration: const Duration(milliseconds: 260),
     pageBuilder: (ctx, _, _) => builder(ctx),
     transitionBuilder: (ctx, anim, _, child) {
-      final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+      final curved = CurvedAnimation(
+        parent: anim,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
       return BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 6 * anim.value, sigmaY: 6 * anim.value),
+        filter: ImageFilter.blur(
+          sigmaX: 6 * anim.value,
+          sigmaY: 6 * anim.value,
+        ),
         child: FadeTransition(
           opacity: curved,
-          child: ScaleTransition(scale: Tween(begin: 0.94, end: 1.0).animate(curved), child: child),
+          child: ScaleTransition(
+            scale: Tween(begin: 0.94, end: 1.0).animate(curved),
+            child: child,
+          ),
         ),
       );
     },
@@ -85,18 +95,17 @@ Future<void> showKuuInfo(
   String buttonLabel = 'Entendido',
   IconData icon = Icons.info_outline_rounded,
   KuuDialogTone tone = KuuDialogTone.info,
-}) =>
-    showKuuDialog<void>(
-      context,
-      builder: (ctx) => KuuDialog(
-        icon: icon,
-        tone: tone,
-        title: title,
-        message: message,
-        primaryLabel: buttonLabel,
-        onPrimary: () => Navigator.of(ctx).pop(),
-      ),
-    );
+}) => showKuuDialog<void>(
+  context,
+  builder: (ctx) => KuuDialog(
+    icon: icon,
+    tone: tone,
+    title: title,
+    message: message,
+    primaryLabel: buttonLabel,
+    onPrimary: () => Navigator.of(ctx).pop(),
+  ),
+);
 
 /// The standard dialog card. [content] goes under the message (fields,
 /// lists). The primary button fills the width; the secondary one sits
@@ -137,26 +146,39 @@ class KuuDialog extends StatelessWidget {
     final scheme = theme.colorScheme;
     return _DialogShell(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(KuuSpacing.lg, KuuSpacing.xl, KuuSpacing.lg, KuuSpacing.lg),
+        padding: const EdgeInsets.fromLTRB(
+          KuuSpacing.lg,
+          KuuSpacing.xl,
+          KuuSpacing.lg,
+          KuuSpacing.lg,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (icon != null) ...[
-              Center(child: KuuIconBadge(icon: icon!, color: tone.color)),
+              Center(
+                child: KuuIconBadge(icon: icon!, color: tone.color),
+              ),
               const SizedBox(height: KuuSpacing.md),
             ],
             Text(
               title,
               textAlign: TextAlign.center,
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, height: 1.25),
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                height: 1.25,
+              ),
             ),
             if (message != null) ...[
               const SizedBox(height: KuuSpacing.sm),
               Text(
                 message!,
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant, height: 1.45),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  height: 1.45,
+                ),
               ),
             ],
             if (content != null) ...[
@@ -167,11 +189,16 @@ class KuuDialog extends StatelessWidget {
             FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: tone.color,
-                foregroundColor: tone == KuuDialogTone.warning ? KuuColor.lightOnSurface : KuuColor.lightSurface,
+                foregroundColor: tone == KuuDialogTone.warning
+                    ? KuuColor.lightOnSurface
+                    : KuuColor.lightSurface,
               ),
               onPressed: busy ? null : onPrimary,
               child: busy
-                  ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
+                  ? const SizedBox.square(
+                      dimension: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
                   : Text(primaryLabel),
             ),
             if (secondaryLabel != null) ...[
@@ -180,7 +207,10 @@ class KuuDialog extends StatelessWidget {
                 style: TextButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                   foregroundColor: scheme.onSurfaceVariant,
-                  textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
                 ),
                 onPressed: busy ? null : onSecondary,
                 child: Text(secondaryLabel!),
@@ -196,7 +226,13 @@ class KuuDialog extends StatelessWidget {
 /// Dialog for longer forms: icon, title, close button and a scrollable
 /// body that brings its own submit button.
 class KuuFormDialog extends StatelessWidget {
-  const KuuFormDialog({super.key, required this.title, required this.child, this.icon, this.maxWidth = 520});
+  const KuuFormDialog({
+    super.key,
+    required this.title,
+    required this.child,
+    this.icon,
+    this.maxWidth = 520,
+  });
   final String title;
   final IconData? icon;
   final Widget child;
@@ -212,15 +248,29 @@ class KuuFormDialog extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(KuuSpacing.lg, KuuSpacing.lg, KuuSpacing.md, KuuSpacing.sm),
+            padding: const EdgeInsets.fromLTRB(
+              KuuSpacing.lg,
+              KuuSpacing.lg,
+              KuuSpacing.md,
+              KuuSpacing.sm,
+            ),
             child: Row(
               children: [
                 if (icon != null) ...[
-                  KuuIconBadge(icon: icon!, color: KuuColor.brandPrimary, size: 44),
+                  KuuIconBadge(
+                    icon: icon!,
+                    color: KuuColor.brandPrimary,
+                    size: 44,
+                  ),
                   const SizedBox(width: KuuSpacing.md),
                 ],
                 Expanded(
-                  child: Text(title, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                  child: Text(
+                    title,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
                 IconButton.filledTonal(
                   tooltip: 'Cerrar',
@@ -232,7 +282,12 @@ class KuuFormDialog extends StatelessWidget {
           ),
           Flexible(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(KuuSpacing.lg, KuuSpacing.sm, KuuSpacing.lg, KuuSpacing.lg),
+              padding: const EdgeInsets.fromLTRB(
+                KuuSpacing.lg,
+                KuuSpacing.sm,
+                KuuSpacing.lg,
+                KuuSpacing.lg,
+              ),
               child: child,
             ),
           ),
@@ -244,24 +299,35 @@ class KuuFormDialog extends StatelessWidget {
 
 /// Icon in a tinted circle with a soft halo.
 class KuuIconBadge extends StatelessWidget {
-  const KuuIconBadge({super.key, required this.icon, required this.color, this.size = 64});
+  const KuuIconBadge({
+    super.key,
+    required this.icon,
+    required this.color,
+    this.size = 64,
+  });
   final IconData icon;
   final Color color;
   final double size;
 
   @override
   Widget build(BuildContext context) => Container(
-        width: size + 16,
-        height: size + 16,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.07)),
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.14)),
-          child: Icon(icon, color: color, size: size * 0.48),
-        ),
-      );
+    width: size + 16,
+    height: size + 16,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: color.withValues(alpha: 0.07),
+    ),
+    child: Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withValues(alpha: 0.14),
+      ),
+      child: Icon(icon, color: color, size: size * 0.48),
+    ),
+  );
 }
 
 /// Rounded card that floats over the blurred backdrop.
@@ -276,7 +342,9 @@ class _DialogShell extends StatelessWidget {
     return SafeArea(
       child: Center(
         child: Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
           child: Padding(
             padding: const EdgeInsets.all(KuuSpacing.lg),
             child: ConstrainedBox(
@@ -294,7 +362,9 @@ class _DialogShell extends StatelessWidget {
                 ),
                 child: Material(
                   color: scheme.surface,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                  ),
                   clipBehavior: Clip.antiAlias,
                   child: child,
                 ),

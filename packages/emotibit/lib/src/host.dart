@@ -50,42 +50,76 @@ abstract final class EmotiBitHost {
     int advertisingPort = EmotiBitPorts.advertising,
     EmotiBitLogger? log,
   }) async {
-    final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-    socket.broadcastEnabled = true;
-    final found = <String, DiscoveredEmotiBit>{};
-    final sub = socket.listen((event) {
-      if (event != RawSocketEvent.read) return;
-      final dg = socket.receive();
-      if (dg == null) return;
-      final text = utf8.decode(dg.data, allowMalformed: true);
-      log?.call('← ${dg.address.address}:${dg.port}  ${text.trim()}');
-      for (final p in EmotiBitPacket.parseAll(text)) {
-        if (p.typeTag != TypeTag.helloHost) continue;
-        final id = p.keyedValue(PayloadLabel.deviceId) ?? dg.address.address;
-        final dp = int.tryParse(p.keyedValue(PayloadLabel.dataPort) ?? '');
-        found[id] = DiscoveredEmotiBit(
-          address: dg.address,
-          deviceId: id,
-          isAvailable: dp == null || dp == -1,
-          advertisingPort: advertisingPort,
-        );
-      }
-    });
-
-    final hello = utf8.encode(
-      EmotiBitPacket(timestamp: _now(), packetNumber: 0, typeTag: TypeTag.helloEmotibit).encode(),
-    );
     final dests = targets ?? [InternetAddress('255.255.255.255')];
+    // Broadcasts (and anything that is not plain IPv4 unicast) go on their
+    // own socket: iOS rejects broadcasts from apps without the multicast
+    // entitlement, and a rejected send can break the socket it used. Direct
+    // (unicast) asks then still work.
+    bool risky(InternetAddress a) =>
+        a.type != InternetAddressType.IPv4 || a.rawAddress.last == 255;
+    final groups = [
+      dests.where((d) => !risky(d)).toList(),
+      dests.where(risky).toList(),
+    ].where((g) => g.isNotEmpty);
+
+    final found = <String, DiscoveredEmotiBit>{};
+    final hello = utf8.encode(
+      EmotiBitPacket(
+              timestamp: _now(),
+              packetNumber: 0,
+              typeTag: TypeTag.helloEmotibit)
+          .encode(),
+    );
+
+    final sockets = <RawDatagramSocket>[];
+    final subs = <StreamSubscription<RawSocketEvent>>[];
+    final sends = <(RawDatagramSocket, List<InternetAddress>)>[];
+    for (final group in groups) {
+      final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      socket.broadcastEnabled = true;
+      sockets.add(socket);
+      sends.add((socket, group));
+      subs.add(socket.listen((event) {
+        if (event != RawSocketEvent.read) return;
+        final dg = socket.receive();
+        if (dg == null) return;
+        final text = utf8.decode(dg.data, allowMalformed: true);
+        log?.call('← ${dg.address.address}:${dg.port}  ${text.trim()}');
+        for (final p in EmotiBitPacket.parseAll(text)) {
+          if (p.typeTag != TypeTag.helloHost) continue;
+          final id = p.keyedValue(PayloadLabel.deviceId) ?? dg.address.address;
+          final dp = int.tryParse(p.keyedValue(PayloadLabel.dataPort) ?? '');
+          found[id] = DiscoveredEmotiBit(
+            address: dg.address,
+            deviceId: id,
+            isAvailable: dp == null || dp == -1,
+            advertisingPort: advertisingPort,
+          );
+        }
+      }, onError: (Object e) => log?.call('✗ $e'), cancelOnError: false));
+    }
+
     // Send a few times: UDP is lossy.
     for (var i = 0; i < 3; i++) {
-      for (final d in dests) {
-        log?.call('→ ${d.address}:$advertisingPort  ${utf8.decode(hello).trim()}');
-        socket.send(hello, d, advertisingPort);
+      for (final (socket, group) in sends) {
+        for (final d in group) {
+          log?.call(
+              '→ ${d.address}:$advertisingPort  ${utf8.decode(hello).trim()}');
+          try {
+            socket.send(hello, d, advertisingPort);
+          } on Object catch (e) {
+            log?.call('✗ ${d.address}: $e');
+          }
+        }
       }
       await Future<void>.delayed(timeout ~/ 3);
     }
-    await sub.cancel();
-    socket.close();
+    for (final sub in subs) {
+      await sub.cancel();
+    }
+    for (final socket in sockets) {
+      socket.close();
+    }
     return found.values.toList();
   }
 
@@ -103,8 +137,8 @@ abstract final class EmotiBitHost {
 
 /// A live connection to one EmotiBit.
 class EmotiBitConnection {
-  EmotiBitConnection._(
-      this.device, this._control, this._data, this._adv, this._dataTimeout, this._log);
+  EmotiBitConnection._(this.device, this._control, this._data, this._adv,
+      this._dataTimeout, this._log);
 
   final DiscoveredEmotiBit device;
   final ServerSocket _control;
@@ -145,12 +179,13 @@ class EmotiBitConnection {
   int get controlPort => _control.port;
   int get dataPort => _data.port;
 
-  static Future<EmotiBitConnection> _open(
-      DiscoveredEmotiBit device, Duration timeout, Duration dataTimeout, EmotiBitLogger? log) async {
+  static Future<EmotiBitConnection> _open(DiscoveredEmotiBit device,
+      Duration timeout, Duration dataTimeout, EmotiBitLogger? log) async {
     final control = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     final data = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
     final adv = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-    final conn = EmotiBitConnection._(device, control, data, adv, dataTimeout, log);
+    final conn =
+        EmotiBitConnection._(device, control, data, adv, dataTimeout, log);
     log?.call('Host: control TCP :${control.port}, datos UDP :${data.port}');
     try {
       await conn._handshake(timeout);
@@ -164,7 +199,8 @@ class EmotiBitConnection {
   Future<void> _handshake(Duration timeout) async {
     final accepted = Completer<Socket>();
     _control.listen((client) {
-      _log?.call('Conexión TCP entrante de ${client.remoteAddress.address}:${client.remotePort}');
+      _log?.call(
+          'Conexión TCP entrante de ${client.remoteAddress.address}:${client.remotePort}');
       if (!accepted.isCompleted &&
           client.remoteAddress.address == device.address.address) {
         accepted.complete(client);
@@ -178,7 +214,9 @@ class EmotiBitConnection {
       final dg = _adv.receive();
       if (dg == null) return;
       final text = utf8.decode(dg.data, allowMalformed: true);
-      if (_current == EmotiBitConnectionStatus.connecting) _log?.call('← ${text.trim()}');
+      if (_current == EmotiBitConnectionStatus.connecting) {
+        _log?.call('← ${text.trim()}');
+      }
       for (final p in EmotiBitPacket.parseAll(text)) {
         if (p.typeTag == TypeTag.pong) _lastPong = DateTime.now();
       }
@@ -188,21 +226,30 @@ class EmotiBitConnection {
 
     // Re-send EC until the device opens the control connection.
     final ec = _packet(TypeTag.emotibitConnect, [
-      PayloadLabel.controlPort, '${_control.port}',
-      PayloadLabel.dataPort, '${_data.port}',
+      PayloadLabel.controlPort,
+      '${_control.port}',
+      PayloadLabel.dataPort,
+      '${_data.port}',
     ]);
-    _log?.call('→ ${device.address.address}:${device.advertisingPort}  ${ec.toString()}');
-    final resend = Timer.periodic(const Duration(milliseconds: 500), (_) => _sendAdv(ec));
+    _log?.call(
+        '→ ${device.address.address}:${device.advertisingPort}  ${ec.toString()}');
+    final resend =
+        Timer.periodic(const Duration(milliseconds: 500), (_) => _sendAdv(ec));
     _sendAdv(ec);
     try {
       _controlClient = await accepted.future.timeout(timeout);
     } on TimeoutException {
-      throw EmotiBitException('El EmotiBit ${device.deviceId} no abrió la conexión de control');
+      throw EmotiBitException(
+          'El EmotiBit ${device.deviceId} no abrió la conexión de control');
     } finally {
       resend.cancel();
     }
 
-    _controlClient!.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()).listen(
+    _controlClient!
+        .cast<List<int>>()
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen(
       (line) {
         _log?.call('Control ← $line');
         final p = EmotiBitPacket.tryParse(line);
@@ -226,13 +273,15 @@ class EmotiBitConnection {
         return;
       }
       if (now.difference(_lastData) > _dataTimeout) {
-        _log?.call('Sin datos por ${_dataTimeout.inMilliseconds} ms → desconectado');
+        _log?.call(
+            'Sin datos por ${_dataTimeout.inMilliseconds} ms → desconectado');
         close(sendDisconnect: false);
         return;
       }
       if (now.difference(lastPing) >= pingInterval) {
         lastPing = now;
-        _sendAdv(_packet(TypeTag.ping, [PayloadLabel.dataPort, '${_data.port}']));
+        _sendAdv(
+            _packet(TypeTag.ping, [PayloadLabel.dataPort, '${_data.port}']));
       }
     });
     _log?.call('Conectado a ${device.deviceId}');
@@ -244,7 +293,8 @@ class EmotiBitConnection {
     final dg = _data.receive();
     if (dg == null) return;
     _lastData = DateTime.now();
-    for (final p in EmotiBitPacket.parseAll(utf8.decode(dg.data, allowMalformed: true))) {
+    for (final p in EmotiBitPacket.parseAll(
+        utf8.decode(dg.data, allowMalformed: true))) {
       if (p.typeTag == TypeTag.requestData) {
         _answerTimeSync(p, dg.address, dg.port);
       }
@@ -277,7 +327,10 @@ class EmotiBitConnection {
       sendControl(TypeTag.userNote, [note.replaceAll(',', ';')]);
 
   Future<void> close({bool sendDisconnect = true}) async {
-    if (_current == EmotiBitConnectionStatus.disconnected && _packets.isClosed) return;
+    if (_current == EmotiBitConnectionStatus.disconnected &&
+        _packets.isClosed) {
+      return;
+    }
     if (sendDisconnect) {
       sendControl(TypeTag.emotibitDisconnect);
       await _controlClient?.flush().catchError((_) {});
@@ -293,8 +346,8 @@ class EmotiBitConnection {
     await _controlMessages.close();
   }
 
-  void _sendAdv(EmotiBitPacket p) =>
-      _adv.send(utf8.encode(p.encode()), device.address, device.advertisingPort);
+  void _sendAdv(EmotiBitPacket p) => _adv.send(
+      utf8.encode(p.encode()), device.address, device.advertisingPort);
 
   EmotiBitPacket _packet(String tag, List<String> payload) => EmotiBitPacket(
         timestamp: _now(),
@@ -326,6 +379,7 @@ int _now() => _clock.elapsedMilliseconds;
 /// `yyyy-MM-dd_HH-mm-ss-ffffff`, the timestamp style used in EmotiBit files.
 String formatEmotiBitTime(DateTime t) {
   String two(int v) => v.toString().padLeft(2, '0');
-  final micros = (t.millisecond * 1000 + t.microsecond).toString().padLeft(6, '0');
+  final micros =
+      (t.millisecond * 1000 + t.microsecond).toString().padLeft(6, '0');
   return '${t.year}-${two(t.month)}-${two(t.day)}_${two(t.hour)}-${two(t.minute)}-${two(t.second)}-$micros';
 }

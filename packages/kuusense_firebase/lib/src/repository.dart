@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -18,7 +19,8 @@ class InviteFailure implements Exception {
   String get message => switch (reason) {
         InviteFailureReason.notFound => 'El código no existe o ya fue usado.',
         InviteFailureReason.expired => 'El código venció. Pide uno nuevo.',
-        InviteFailureReason.alreadyLinked => 'Ya estás vinculado/a a este niño/a.',
+        InviteFailureReason.alreadyLinked =>
+          'Ya estás vinculado/a a este niño/a.',
       };
 
   @override
@@ -28,7 +30,8 @@ class InviteFailure implements Exception {
 /// All Firestore / Storage access goes through here, so security-rule
 /// assumptions live in one place (see firebase/firestore.rules).
 class KuusenseRepository {
-  KuusenseRepository({FirebaseFirestore? db, FirebaseAuth? auth, FirebaseStorage? storage})
+  KuusenseRepository(
+      {FirebaseFirestore? db, FirebaseAuth? auth, FirebaseStorage? storage})
       : db = db ?? FirebaseFirestore.instance,
         auth = auth ?? FirebaseAuth.instance,
         storage = storage ?? FirebaseStorage.instance;
@@ -40,9 +43,27 @@ class KuusenseRepository {
   String get uid => auth.currentUser!.uid;
   int get _now => DateTime.now().millisecondsSinceEpoch;
 
-  CollectionReference<Map<String, dynamic>> get _tutors => db.collection(Collections.tutors);
-  CollectionReference<Map<String, dynamic>> get _children => db.collection(Collections.children);
-  CollectionReference<Map<String, dynamic>> get _invites => db.collection(Collections.invites);
+  CollectionReference<Map<String, dynamic>> get _tutors =>
+      db.collection(Collections.tutors);
+  DocumentReference<Map<String, dynamic>> _tutorCard(String tutorUid) => _tutors
+      .doc(tutorUid)
+      .collection(Collections.tutorPublic)
+      .doc(Collections.tutorCardDoc);
+
+  /// Updates a tutor doc and its public card together, so co-tutors always
+  /// see the current name, type and photo (the rules require them equal).
+  Future<void> _updateTutor(String tutorUid, Map<String, dynamic> changes) =>
+      db.runTransaction((tx) async {
+        final ref = _tutors.doc(tutorUid);
+        final snap = await tx.get(ref);
+        final merged = Tutor.fromMap(tutorUid, {...?snap.data(), ...changes});
+        tx.update(ref, changes);
+        tx.set(_tutorCard(tutorUid), merged.card.toMap());
+      });
+  CollectionReference<Map<String, dynamic>> get _children =>
+      db.collection(Collections.children);
+  CollectionReference<Map<String, dynamic>> get _invites =>
+      db.collection(Collections.invites);
   DocumentReference<Map<String, dynamic>> _profile(String childId) => _children
       .doc(childId)
       .collection(Collections.childPrivate)
@@ -60,8 +81,49 @@ class KuusenseRepository {
       .map((d) => d.exists ? Tutor.fromMap(d.id, d.data()!) : null);
 
   /// The tutor edits their own name and type (the rest is admin-only).
-  Future<void> saveMyTutorProfile({required String displayName, required TutorType type}) =>
-      _tutors.doc(uid).update({'displayName': displayName.trim(), 'type': type.name});
+  Future<void> saveMyTutorProfile(
+          {required String displayName, required TutorType type}) =>
+      _updateTutor(uid, {'displayName': displayName.trim(), 'type': type.name});
+
+  /// Public cards (name, type, photo) of the given tutors, e.g. a child's
+  /// [Child.tutorUids]. Tutors without a card yet are left out.
+  Future<List<TutorCard>> tutorCards(List<String> tutorUids) async {
+    final snaps = await Future.wait(tutorUids.map((u) => _tutorCard(u).get()));
+    return [
+      for (final s in snaps)
+        if (s.exists)
+          TutorCard.fromMap(s.reference.parent.parent!.id, s.data()!),
+    ];
+  }
+
+  /// Uploads [bytes] (JPEG or PNG) as the signed-in tutor's profile photo,
+  /// replacing the previous one. Resize before calling (about 512 px).
+  Future<void> setMyTutorPhoto(Uint8List bytes, {String? previousPath}) async {
+    final png = bytes.length > 4 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47;
+    final path = StoragePaths.tutorPhoto(uid, _now, png: png);
+    await storage.ref(path).putData(
+        bytes, SettableMetadata(contentType: png ? 'image/png' : 'image/jpeg'));
+    await _updateTutor(uid, {'photoPath': path});
+    if (previousPath != null) await _deleteQuietly(previousPath);
+  }
+
+  /// Removes the signed-in tutor's profile photo.
+  Future<void> removeMyTutorPhoto(String path) async {
+    await _updateTutor(uid, {'photoPath': null});
+    await _deleteQuietly(path);
+  }
+
+  Future<void> _deleteQuietly(String path) async {
+    try {
+      await storage.ref(path).delete();
+    } on FirebaseException catch (_) {
+      // Already gone; the profile no longer points to it.
+    }
+  }
 
   // ------------------------------------------------------------ children (tutor side)
 
@@ -76,31 +138,34 @@ class KuusenseRepository {
       .snapshots()
       .map((d) => d.exists ? Child.fromMap(d.id, d.data()!) : null);
 
-  /// Private profile (nickname, avatar). Only linked tutors can read it.
+  /// Private profile (nickname, avatar, birth date). Only linked tutors and
+  /// admins can read it.
   Stream<ChildProfile?> watchChildProfile(String childId) => _profile(childId)
       .snapshots()
       .map((d) => d.exists ? ChildProfile.fromMap(d.data()!) : null);
 
   /// Registers a child. A tutor registers it for themself; an admin passes
   /// the owning tutor as [ownerUid]. [consentConfirmed] must be true: whoever
-  /// registers confirms they have the caregiver's consent.
+  /// registers confirms they have the caregiver's consent. The full
+  /// [birthDate] stays in the private profile; researchers only get its year.
   Future<Child> registerChild({
     required String displayName,
     required String avatarId,
-    required int birthYear,
+    required DateTime birthDate,
     required bool consentConfirmed,
     DunnQuadrant? dunnQuadrant,
     String? ownerUid,
   }) async {
     if (!consentConfirmed) {
-      throw ArgumentError.value(consentConfirmed, 'consentConfirmed', 'consent is required');
+      throw ArgumentError.value(
+          consentConfirmed, 'consentConfirmed', 'consent is required');
     }
     final ref = _children.doc();
     final now = _now;
     final child = Child(
       id: ref.id,
       code: Child.generateCode(),
-      birthYear: birthYear,
+      birthYear: birthDate.year,
       dunnQuadrant: dunnQuadrant,
       ownerUid: ownerUid ?? uid,
       tutorUids: [ownerUid ?? uid],
@@ -110,13 +175,10 @@ class KuusenseRepository {
     final batch = db.batch()
       ..set(ref, child.toMap())
       ..set(_profile(ref.id),
-          ChildProfile(displayName: displayName.trim(), avatarId: avatarId).toMap());
+          _profileOf(displayName, avatarId, birthDate).toMap());
     await batch.commit();
     return child;
   }
-
-  Future<void> updateChild(String childId, {required int birthYear, DunnQuadrant? dunnQuadrant}) =>
-      _children.doc(childId).update({'birthYear': birthYear, 'dunnQuadrant': dunnQuadrant?.name});
 
   /// Saves the child form (profile and private part) in one batch. Linked
   /// tutors and admins.
@@ -124,25 +186,38 @@ class KuusenseRepository {
     String childId, {
     required String displayName,
     required String avatarId,
-    required int birthYear,
+    required DateTime birthDate,
     DunnQuadrant? dunnQuadrant,
   }) async {
     final batch = db.batch()
-      ..update(_children.doc(childId), {'birthYear': birthYear, 'dunnQuadrant': dunnQuadrant?.name})
-      ..set(_profile(childId), ChildProfile(displayName: displayName.trim(), avatarId: avatarId).toMap());
+      ..update(_children.doc(childId),
+          {'birthYear': birthDate.year, 'dunnQuadrant': dunnQuadrant?.name})
+      ..set(_profile(childId),
+          _profileOf(displayName, avatarId, birthDate).toMap());
     await batch.commit();
   }
+
+  ChildProfile _profileOf(
+          String displayName, String avatarId, DateTime birthDate) =>
+      ChildProfile(
+        displayName: displayName.trim(),
+        avatarId: avatarId,
+        birthDate: ChildProfile.formatBirthDate(birthDate),
+      );
 
   Future<void> updateChildProfile(String childId, ChildProfile profile) =>
       _profile(childId).set(profile.toMap());
 
   /// The signed-in tutor stops following a child (not allowed for the owner).
-  Future<void> leaveChild(String childId) =>
-      _children.doc(childId).update({'tutorUids': FieldValue.arrayRemove([uid])});
+  Future<void> leaveChild(String childId) => _children.doc(childId).update({
+        'tutorUids': FieldValue.arrayRemove([uid])
+      });
 
   /// Owner only: unlinks another tutor.
   Future<void> unlinkTutor(String childId, String tutorUid) =>
-      _children.doc(childId).update({'tutorUids': FieldValue.arrayRemove([tutorUid])});
+      _children.doc(childId).update({
+        'tutorUids': FieldValue.arrayRemove([tutorUid])
+      });
 
   /// Owner or admin. Sessions are research data and stay (pseudonymous)
   /// until the retention policy removes them with admin tooling.
@@ -190,7 +265,9 @@ class KuusenseRepository {
     final snap = await _invites.doc(code).get();
     if (!snap.exists) throw const InviteFailure(InviteFailureReason.notFound);
     final invite = Invite.fromMap(code, snap.data()!);
-    if (invite.isExpired()) throw const InviteFailure(InviteFailureReason.expired);
+    if (invite.isExpired()) {
+      throw const InviteFailure(InviteFailureReason.expired);
+    }
 
     final batch = db.batch()
       ..update(_children.doc(invite.childId), {
@@ -219,12 +296,11 @@ class KuusenseRepository {
       .map((s) => s.docs.map((d) => Tutor.fromMap(d.id, d.data())).toList());
 
   /// Private profile (nickname, avatar) of every child, by child id. Admin only.
-  Stream<Map<String, ChildProfile>> watchAllChildProfiles() => db
-      .collectionGroup(Collections.childPrivate)
-      .snapshots()
-      .map((s) => {
+  Stream<Map<String, ChildProfile>> watchAllChildProfiles() =>
+      db.collectionGroup(Collections.childPrivate).snapshots().map((s) => {
             for (final d in s.docs)
-              if (d.id == Collections.childProfileDoc && d.reference.parent.parent != null)
+              if (d.id == Collections.childProfileDoc &&
+                  d.reference.parent.parent != null)
                 d.reference.parent.parent!.id: ChildProfile.fromMap(d.data()),
           });
 
@@ -237,7 +313,7 @@ class KuusenseRepository {
     required TutorType type,
   }) async {
     final cleanEmail = email.trim().toLowerCase();
-    final newUid = await createTutorAccount(cleanEmail);
+    final newUid = await createAccount(cleanEmail);
     final tutor = Tutor(
       uid: newUid,
       displayName: displayName.trim(),
@@ -245,13 +321,18 @@ class KuusenseRepository {
       createdAtMs: _now,
       email: cleanEmail,
     );
-    await _tutors.doc(newUid).set(tutor.toMap());
+    final batch = db.batch()
+      ..set(_tutors.doc(newUid), tutor.toMap())
+      ..set(_tutorCard(newUid), tutor.card.toMap());
+    await batch.commit();
     return tutor;
   }
 
   /// Admin only. The sign-in email itself is not changed here.
-  Future<void> updateTutor(String tutorUid, {required String displayName, required TutorType type}) =>
-      _tutors.doc(tutorUid).update({'displayName': displayName.trim(), 'type': type.name});
+  Future<void> updateTutor(String tutorUid,
+          {required String displayName, required TutorType type}) =>
+      _updateTutor(
+          tutorUid, {'displayName': displayName.trim(), 'type': type.name});
 
   /// Admin only. A deactivated tutor keeps their links but cannot see or
   /// record anything until reactivated.
@@ -263,13 +344,52 @@ class KuusenseRepository {
 
   /// Admin only: sets which tutors follow a child and who owns it (the owner
   /// is always kept in [tutorUids]).
-  Future<void> setChildTutors(String childId, {required String ownerUid, required List<String> tutorUids}) =>
+  Future<void> setChildTutors(String childId,
+          {required String ownerUid, required List<String> tutorUids}) =>
       _children.doc(childId).update({
         'ownerUid': ownerUid,
         'tutorUids': {ownerUid, ...tutorUids}.toList(),
       });
 
   // ------------------------------------------------------------ staff (web)
+
+  /// Every staff member (admins and researchers). Admin only.
+  Stream<List<StaffMember>> watchStaff() =>
+      db.collection(Collections.staff).snapshots().map(
+          (s) => [for (final d in s.docs) StaffMember.fromMap(d.id, d.data())]);
+
+  /// Admin only: creates a researcher's sign-in account (they get an email to
+  /// choose their password) and grants web access.
+  Future<StaffMember> createResearcher(
+      {required String email, required String displayName}) async {
+    final cleanEmail = email.trim().toLowerCase();
+    final newUid = await createAccount(cleanEmail);
+    final member = StaffMember(
+      uid: newUid,
+      role: StaffRole.researcher,
+      displayName: displayName.trim(),
+      email: cleanEmail,
+      createdAtMs: _now,
+    );
+    await db.collection(Collections.staff).doc(newUid).set(member.toMap());
+    return member;
+  }
+
+  /// Admin only, researchers only.
+  Future<void> updateResearcher(String staffUid,
+          {required String displayName}) =>
+      db
+          .collection(Collections.staff)
+          .doc(staffUid)
+          .update({'displayName': displayName.trim()});
+
+  /// Admin only, researchers only. A deactivated researcher keeps their
+  /// account but cannot enter the platform until reactivated.
+  Future<void> setResearcherActive(String staffUid, bool active) =>
+      db.collection(Collections.staff).doc(staffUid).update({'active': active});
+
+  /// Sends the "choose your password" email again (any account).
+  Future<void> resendAccessEmail(String email) => sendAccessEmail(email);
 
   /// The signed-in user's staff membership, or null for tutors.
   Stream<StaffMember?> watchMyStaffMembership() => db
@@ -290,15 +410,16 @@ class KuusenseRepository {
       .orderBy('startedAtMs', descending: true)
       .limit(limit)
       .snapshots()
-      .map((s) => s.docs.map((d) => RecordingSession.fromMap(d.id, d.data())).toList());
+      .map((s) =>
+          s.docs.map((d) => RecordingSession.fromMap(d.id, d.data())).toList());
 
   /// One session, live. Staff or linked tutors.
-  Stream<RecordingSession?> watchSession(String childId, String sessionId) => _sessions(childId)
-      .doc(sessionId)
-      .snapshots()
-      .map((d) => d.exists ? RecordingSession.fromMap(d.id, d.data()!) : null);
+  Stream<RecordingSession?> watchSession(String childId, String sessionId) =>
+      _sessions(childId).doc(sessionId).snapshots().map(
+          (d) => d.exists ? RecordingSession.fromMap(d.id, d.data()!) : null);
 
-  Future<String> downloadUrl(String storagePath) => storage.ref(storagePath).getDownloadURL();
+  Future<String> downloadUrl(String storagePath) =>
+      storage.ref(storagePath).getDownloadURL();
 
   /// Per-second signal summary of a session (staff only, like every session
   /// file). Empty when the session has no `signals.csv`.
@@ -311,10 +432,14 @@ class KuusenseRepository {
 
   // ------------------------------------------------------------ sessions
 
-  Stream<List<RecordingSession>> watchSessions(String childId) => _sessions(childId)
-      .orderBy('startedAtMs', descending: true)
-      .snapshots()
-      .map((s) => s.docs.map((d) => RecordingSession.fromMap(d.id, d.data())).toList());
+  Stream<List<RecordingSession>> watchSessions(
+          String childId) =>
+      _sessions(childId)
+          .orderBy('startedAtMs', descending: true)
+          .snapshots()
+          .map((s) => s.docs
+              .map((d) => RecordingSession.fromMap(d.id, d.data()))
+              .toList());
 
   Future<RecordingSession> startSession({
     required String childId,
@@ -341,17 +466,20 @@ class KuusenseRepository {
       _sessions(childId).doc(sessionId).update({'live': live.toMap()});
 
   /// Appends an event as soon as it is marked, so other tutors see it live.
-  Future<void> addSessionEvent(String childId, String sessionId, SessionEvent event) =>
+  Future<void> addSessionEvent(
+          String childId, String sessionId, SessionEvent event) =>
       _sessions(childId).doc(sessionId).update({
         'events': FieldValue.arrayUnion([event.toMap()]),
       });
 
-  Future<void> removeSessionEvent(String childId, String sessionId, SessionEvent event) =>
+  Future<void> removeSessionEvent(
+          String childId, String sessionId, SessionEvent event) =>
       _sessions(childId).doc(sessionId).update({
         'events': FieldValue.arrayRemove([event.toMap()]),
       });
 
-  Future<void> updateSession(String childId, String sessionId, Map<String, Object?> fields) =>
+  Future<void> updateSession(
+          String childId, String sessionId, Map<String, Object?> fields) =>
       _sessions(childId).doc(sessionId).update(fields);
 
   Reference sessionFileRef(String childId, String sessionId, String fileName) =>

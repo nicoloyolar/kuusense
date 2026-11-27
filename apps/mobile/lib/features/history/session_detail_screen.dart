@@ -150,6 +150,8 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
                           ? 'Sin registrar'
                           : ctx.present.map((t) => t.label).join(', '),
                     ),
+                    if ((ctx.comment ?? '').isNotEmpty)
+                      _Field('Comentarios', ctx.comment!),
                   ],
                 ),
               ),

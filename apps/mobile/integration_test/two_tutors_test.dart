@@ -15,10 +15,16 @@ import 'package:kuusense_mobile/main.dart';
 
 /// Pumps until [finder] matches (Firestore streams and spinners never
 /// "settle", so pumpAndSettle cannot be used).
-Future<void> waitFor(WidgetTester t, Finder finder, {Duration timeout = const Duration(seconds: 20)}) async {
+Future<void> waitFor(
+  WidgetTester t,
+  Finder finder, {
+  Duration timeout = const Duration(seconds: 20),
+}) async {
   final end = DateTime.now().add(timeout);
   while (finder.evaluate().isEmpty) {
-    if (DateTime.now().isAfter(end)) throw TestFailure('Timed out waiting for $finder');
+    if (DateTime.now().isAfter(end)) {
+      throw TestFailure('Timed out waiting for $finder');
+    }
     await t.pump(const Duration(milliseconds: 100));
   }
   await t.pump(const Duration(milliseconds: 300));
@@ -43,29 +49,44 @@ Future<void> type(WidgetTester t, String label, String text) async {
 /// the admin: it creates the account and writes the tutor profile straight
 /// to the Firestore emulator (the `owner` token bypasses the rules).
 Future<void> seedTutor(String name, String email, String type) async {
-  final cred = await FirebaseAuth.instance
-      .createUserWithEmailAndPassword(email: email, password: 'clave1234');
+  final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+    email: email,
+    password: 'clave1234',
+  );
   final uid = cred.user!.uid;
   await FirebaseAuth.instance.signOut();
+  // The profile and its public card, as the web platform writes them.
+  await _writeDoc('tutors/$uid', {
+    'displayName': {'stringValue': name},
+    'type': {'stringValue': type},
+    'email': {'stringValue': email},
+    'active': {'booleanValue': true},
+    'createdAtMs': {'integerValue': '${DateTime.now().millisecondsSinceEpoch}'},
+  });
+  await _writeDoc('tutors/$uid/public/card', {
+    'displayName': {'stringValue': name},
+    'type': {'stringValue': type},
+    'photoPath': {'nullValue': null},
+  });
+}
+
+Future<void> _writeDoc(String path, Map<String, Object?> fields) async {
   final host = KuusenseEnv.emulatorHost;
   final client = HttpClient();
   try {
-    final req = await client.patchUrl(Uri.parse(
-        'http://$host:8080/v1/projects/demo-kuusense/databases/(default)/documents/tutors/$uid'));
+    final req = await client.patchUrl(
+      Uri.parse(
+        'http://$host:8080/v1/projects/demo-kuusense/databases/(default)/documents/$path',
+      ),
+    );
     req.headers
       ..contentType = ContentType.json
       ..set('Authorization', 'Bearer owner');
-    req.write(jsonEncode({
-      'fields': {
-        'displayName': {'stringValue': name},
-        'type': {'stringValue': type},
-        'email': {'stringValue': email},
-        'active': {'booleanValue': true},
-        'createdAtMs': {'integerValue': '${DateTime.now().millisecondsSinceEpoch}'},
-      },
-    }));
+    req.write(jsonEncode({'fields': fields}));
     final res = await req.close();
-    if (res.statusCode != 200) throw TestFailure('seedTutor failed: ${res.statusCode}');
+    if (res.statusCode != 200) {
+      throw TestFailure('seeding $path failed: ${res.statusCode}');
+    }
   } finally {
     client.close();
   }
@@ -94,14 +115,15 @@ Future<void> backToHome(WidgetTester t) async {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('two tutors with different accounts follow the same child', (t) async {
+  testWidgets('two tutors with different accounts follow the same child', (
+    t,
+  ) async {
     await initKuusenseFirebase();
     final auth = FirebaseAuthService();
     await auth.signOut();
     final run = DateTime.now().millisecondsSinceEpoch;
     final ana = 'ana.$run@kuusense.test';
     final bruno = 'bruno.$run@kuusense.test';
-    final birthYear = DateTime.now().year - 8;
     await seedTutor('Ana', ana, 'family');
     await seedTutor('Bruno', bruno, 'teacher');
 
@@ -112,15 +134,19 @@ void main() {
     await signIn(t, ana);
     await tap(t, find.text('Registrar un niño/a'));
     await type(t, 'Apodo o nombre visible', 'Tomi');
-    await tap(t, find.byType(DropdownButtonFormField<int>));
-    await tap(t, find.text('$birthYear  (8 años aprox.)').last);
+    await tap(t, find.text('Día'));
+    await tap(t, find.text('1').last);
+    await tap(t, find.text('Mes'));
+    await tap(t, find.text('enero').last);
+    // The current year is the first option.
+    await tap(t, find.text('Año'));
+    await tap(t, find.text('${DateTime.now().year}').last);
     await tap(t, find.byKey(const ValueKey('avatar-rocket')));
     await tap(t, find.byType(Checkbox));
     await tap(t, find.widgetWithText(FilledButton, 'Registrar'));
 
     await waitFor(t, find.text('Solo tú lo acompañas'));
-    expect(find.text('Eres el/la responsable de este perfil'), findsOneWidget);
-    await tap(t, find.text('Invitar a otro tutor'));
+    await tap(t, find.text('Invitar'));
     await waitFor(t, find.byType(SelectableText));
     final code = t.widget<SelectableText>(find.byType(SelectableText)).data!;
     expect(code, hasLength(Invite.codeLength));
@@ -132,16 +158,23 @@ void main() {
 
     // --- Bruno: signs in and joins with the code.
     await signIn(t, bruno);
-    await waitFor(t, find.text('Todavía no acompañas a ningún niño/a. Regístralo, o únete con el código '
-        'que te compartió otro tutor.'));
+    await waitFor(
+      t,
+      find.text(
+        'Todavía no acompañas a ningún niño/a. Regístralo, o únete con el código '
+        'que te compartió otro tutor.',
+      ),
+    );
     await tap(t, find.text('Tengo un código de invitación'));
     await t.enterText(find.byType(TextField), code.toLowerCase());
     await tap(t, find.widgetWithText(FilledButton, 'Unirme'));
 
-    await waitFor(t, find.text('2 tutores lo acompañan'));
+    await waitFor(t, find.text('2 tutores'));
     expect(find.text('Tomi'), findsWidgets);
-    expect(find.text('Te uniste con un código'), findsOneWidget);
+    await tap(t, find.byTooltip('Más opciones'));
     expect(find.text('Desvincularme'), findsOneWidget);
+    await t.tapAt(const Offset(20, 300)); // close the menu
+    await t.pump(const Duration(seconds: 1));
 
     // The code was single-use.
     await backToHome(t);
@@ -156,7 +189,10 @@ void main() {
     // --- Ana sees both tutors.
     await signIn(t, ana);
     await tap(t, find.text('Tomi'));
-    await waitFor(t, find.text('2 tutores lo acompañan'));
-    expect(find.text('Eliminar a Tomi'), findsOneWidget);
+    await waitFor(t, find.text('2 tutores'));
+    await tap(t, find.text('Tutores'));
+    await waitFor(t, find.text('Bruno'));
+    expect(find.text('Ana (tú)'), findsOneWidget);
+    expect(find.text('Responsable'), findsOneWidget);
   });
 }

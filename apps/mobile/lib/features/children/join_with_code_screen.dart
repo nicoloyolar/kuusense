@@ -29,7 +29,9 @@ class _JoinWithCodeScreenState extends State<JoinWithCodeScreen> {
 
   Future<void> _submit() async {
     if (Invite.normalize(_code.text).length != Invite.codeLength) {
-      setState(() => _error = 'El código tiene ${Invite.codeLength} caracteres.');
+      setState(
+        () => _error = 'El código tiene ${Invite.codeLength} caracteres.',
+      );
       return;
     }
     setState(() {
@@ -79,11 +81,17 @@ class _JoinWithCodeScreenState extends State<JoinWithCodeScreen> {
                     maxLength: Invite.codeLength,
                     inputFormatters: [
                       TextInputFormatter.withFunction(
-                        (old, value) => value.copyWith(text: value.text.toUpperCase()),
+                        (old, value) =>
+                            value.copyWith(text: value.text.toUpperCase()),
                       ),
                     ],
-                    style: theme.textTheme.headlineMedium?.copyWith(letterSpacing: 6),
-                    decoration: InputDecoration(labelText: 'Código', errorText: _error),
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      letterSpacing: 6,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Código',
+                      errorText: _error,
+                    ),
                     onSubmitted: (_) => _submit(),
                   ),
                   const SizedBox(height: KuuSpacing.lg),
@@ -91,7 +99,9 @@ class _JoinWithCodeScreenState extends State<JoinWithCodeScreen> {
                     onPressed: _busy ? null : _submit,
                     child: _busy
                         ? const SizedBox.square(
-                            dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
+                            dimension: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                          )
                         : const Text('Unirme'),
                   ),
                 ],

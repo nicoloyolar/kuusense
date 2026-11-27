@@ -186,12 +186,18 @@ class KuuDataGapsNote extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.warning_amber_rounded, size: 18, color: theme.colorScheme.error),
+          Icon(
+            Icons.warning_amber_rounded,
+            size: 18,
+            color: theme.colorScheme.error,
+          ),
           const SizedBox(width: KuuSpacing.xs),
           Expanded(
             child: Text(
               lines.join('\n'),
-              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.error,
+              ),
             ),
           ),
         ],
@@ -207,13 +213,13 @@ class KuuIncompletePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Tooltip(
-        message: sessionEndReasonLabel(session.endReason),
-        child: KuuPill(
-          icon: Icons.warning_amber_rounded,
-          text: 'Incompleta',
-          color: Theme.of(context).colorScheme.error,
-        ),
-      );
+    message: sessionEndReasonLabel(session.endReason),
+    child: KuuPill(
+      icon: Icons.warning_amber_rounded,
+      text: 'Incompleta',
+      color: Theme.of(context).colorScheme.error,
+    ),
+  );
 }
 
 class KuuPill extends StatelessWidget {
@@ -543,7 +549,18 @@ class KuuSessionTile extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  Text(formatDuration(s.duration), style: muted),
+                  // Short and scaled down so it never wraps to two lines.
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      formatDurationShort(s.duration),
+                      maxLines: 1,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

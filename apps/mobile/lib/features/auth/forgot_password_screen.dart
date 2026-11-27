@@ -7,7 +7,11 @@ import 'auth_scaffold.dart';
 /// Sends a password-reset email. (The mockup also mentions SMS codes; email
 /// is what Firebase Auth supports out of the box.)
 class ForgotPasswordScreen extends StatefulWidget {
-  const ForgotPasswordScreen({super.key, required this.auth, this.initialEmail = ''});
+  const ForgotPasswordScreen({
+    super.key,
+    required this.auth,
+    this.initialEmail = '',
+  });
   final AuthService auth;
   final String initialEmail;
 
@@ -34,7 +38,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       _busy = true;
       _error = null;
     });
-    final error = await runAuthAction(() => widget.auth.sendPasswordReset(email: _email.text.trim()));
+    final error = await runAuthAction(
+      () => widget.auth.sendPasswordReset(email: _email.text.trim()),
+    );
     if (mounted) {
       setState(() {
         _busy = false;
@@ -49,7 +55,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (_sent) {
       return AuthScaffold(
         title: 'Revisa tu correo',
-        subtitle: 'Si existe una cuenta para ${_email.text.trim()}, te enviamos un enlace para '
+        subtitle:
+            'Si existe una cuenta para ${_email.text.trim()}, te enviamos un enlace para '
             'crear una nueva contraseña.',
         showBack: true,
         children: [
@@ -82,7 +89,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         AuthErrorText(_error),
         const SizedBox(height: KuuSpacing.lg),
-        AuthSubmitButton(label: 'Enviar enlace', busy: _busy, onPressed: _submit),
+        AuthSubmitButton(
+          label: 'Enviar enlace',
+          busy: _busy,
+          onPressed: _submit,
+        ),
       ],
     );
   }
